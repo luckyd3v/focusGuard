@@ -179,7 +179,10 @@ private fun WindowCard(
 
 private fun windowDescription(window: UsageWindow): String {
     if (!window.onDemand) return "${window.rangeLabel()}, ${window.daysLabel().lowercase()}"
-    val since = window.activatedAt ?: return "Sob demanda, desligada"
+    val fixed = window.fixedEstimateMinutes
+        ?.let { ", estimativa fixa de ${TimeFormat.duration(it * 60_000L)}" }
+        ?: ", pergunta a estimativa"
+    val since = window.activatedAt ?: return "Sob demanda, desligada$fixed"
     val until = window.estimatedEndAt?.let { ", estimativa até ${TimeFormat.timeOfDay(it)}" }.orEmpty()
     return "Sob demanda, ligada desde ${TimeFormat.timeOfDay(since)}$until"
 }
@@ -197,10 +200,15 @@ private fun WindowEditorDialog(
     var limitText by remember { mutableStateOf(initial.limitMinutes.toString()) }
     var days by remember { mutableIntStateOf(initial.daysMask) }
     var onDemand by remember { mutableStateOf(initial.onDemand) }
+    var askEstimate by remember { mutableStateOf(initial.fixedEstimateMinutes == null) }
+    var fixedText by remember { mutableStateOf((initial.fixedEstimateMinutes ?: 60).toString()) }
 
     val limit = limitText.toIntOrNull()
     val limitValid = limit != null && limit in 1..1440
-    val valid = name.isNotBlank() && limitValid && (onDemand || days != 0)
+    val fixed = fixedText.toIntOrNull()
+    val fixedValid = fixed != null && fixed in 1..1440
+    val estimateValid = !onDemand || askEstimate || fixedValid
+    val valid = name.isNotBlank() && limitValid && (onDemand || days != 0) && estimateValid
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -228,6 +236,32 @@ private fun WindowEditorDialog(
                     }
                     if (onDemand) {
                         HintText("Você liga e desliga a janela quando quiser. Enquanto ligada, ela substitui as janelas por horário.")
+                    }
+                }
+
+                if (onDemand) {
+                    Column {
+                        Text("Duração estimada", style = MaterialTheme.typography.labelLarge)
+                        Spacer(Modifier.height(6.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(selected = askEstimate, onClick = { askEstimate = true }, label = { Text("Perguntar sempre") })
+                            FilterChip(selected = !askEstimate, onClick = { askEstimate = false }, label = { Text("Fixa") })
+                        }
+                        if (askEstimate) {
+                            HintText("Ao ligar a janela, o app pergunta quanto tempo a atividade deve durar.")
+                        } else {
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = fixedText,
+                                onValueChange = { v -> fixedText = v.filter(Char::isDigit).take(4) },
+                                label = { Text("Duração estimada (minutos)") },
+                                singleLine = true,
+                                isError = fixedText.isNotEmpty() && !fixedValid,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            HintText("A janela liga direto, sem perguntar. Quando esse tempo passar, o app pergunta se você quer desligá-la.")
+                        }
                     }
                 }
 
@@ -285,6 +319,7 @@ private fun WindowEditorDialog(
                             enabled = onDemand || initial.enabled,
                             // Virar janela por horário desliga a ativação sob demanda.
                             activatedAt = if (onDemand) initial.activatedAt else null,
+                            fixedEstimateMinutes = if (onDemand && !askEstimate) fixed else null,
                         )
                     )
                 },

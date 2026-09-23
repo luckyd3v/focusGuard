@@ -10,6 +10,9 @@ data class LiveSession(
     val limitMinutes: Int?,
     /** Instante a partir do qual o limite é contado (normalmente = startedAt). */
     val limitAnchor: Long,
+    val windowId: Long? = null,
+    /** A sessão conta para uma janela sob demanda (que pode ser desligada pelo card). */
+    val onDemand: Boolean = false,
 )
 
 object LiveSessionState {

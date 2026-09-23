@@ -7,12 +7,19 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [UsageWindow::class, UsageSession::class], version = 3, exportSchema = false)
+@Database(entities = [UsageWindow::class, UsageSession::class], version = 4, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun windowDao(): UsageWindowDao
     abstract fun sessionDao(): UsageSessionDao
 
     companion object {
+        /** v4: estimativa fixa opcional nas janelas sob demanda. */
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE usage_windows ADD COLUMN fixedEstimateMinutes INTEGER")
+            }
+        }
+
         /** v3: estimativa de duração das janelas sob demanda. */
         private val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -39,7 +46,7 @@ abstract class AppDatabase : RoomDatabase() {
                         )
                     }
                 })
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build()
     }
 }

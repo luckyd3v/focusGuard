@@ -134,7 +134,8 @@ private fun OnDemandRow(
                 Text(window.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
                 Text(
                     when {
-                        !active -> "Desligada · ${window.limitMinutes} min por desbloqueio"
+                        !active -> "Desligada · ${window.limitMinutes} min por desbloqueio" +
+                            window.fixedEstimateMinutes?.let { " · estimativa de ${TimeFormat.duration(it * 60_000L)}" }.orEmpty()
                         end == null -> "Ligada desde ${TimeFormat.timeOfDay(window.activatedAt!!)}"
                         exceeded -> "Tempo estimado esgotado às ${TimeFormat.timeOfDay(end)}"
                         else -> "Ligada · estimativa até ${TimeFormat.timeOfDay(end)} " +

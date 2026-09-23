@@ -98,8 +98,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _pendingActivation = MutableStateFlow<UsageWindow?>(null)
     val pendingActivation: StateFlow<UsageWindow?> = _pendingActivation
 
+    /** Com estimativa fixa liga direto; senão abre o diálogo pedindo a estimativa. */
     fun requestActivation(window: UsageWindow) {
-        _pendingActivation.value = window
+        val fixed = window.fixedEstimateMinutes
+        if (fixed != null) activateOnDemand(window, fixed) else _pendingActivation.value = window
     }
 
     /** Usado pelo botão "Ligar" da notificação, que só conhece o id. */
@@ -116,7 +118,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         repository.activateOnDemand(window.id, System.currentTimeMillis(), estimateMinutes)
     }
 
-    fun deactivateOnDemand(window: UsageWindow) = viewModelScope.launch { repository.deactivateOnDemand(window.id) }
+    fun deactivateOnDemand(window: UsageWindow) = deactivateOnDemand(window.id)
+
+    fun deactivateOnDemand(windowId: Long) = viewModelScope.launch { repository.deactivateOnDemand(windowId) }
 
     fun extendEstimate(window: UsageWindow, minutes: Int) =
         viewModelScope.launch { repository.extendEstimate(window.id, minutes) }

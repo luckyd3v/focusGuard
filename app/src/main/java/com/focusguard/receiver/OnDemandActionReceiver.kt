@@ -7,8 +7,8 @@ import com.focusguard.app
 import kotlinx.coroutines.launch
 
 /**
- * Botões das notificações para desligar a janela sob demanda ou estender a estimativa sem abrir
- * o app. O serviço observa as janelas no banco e reage sozinho à mudança.
+ * Botões das notificações para ligar (janelas com estimativa fixa) ou desligar a janela sob demanda
+ * e para estender a estimativa, sem abrir o app. O serviço observa as janelas no banco e reage sozinho à mudança.
  */
 class OnDemandActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -19,6 +19,11 @@ class OnDemandActionReceiver : BroadcastReceiver() {
         context.app.appScope.launch {
             try {
                 when (intent.action) {
+                    ACTION_ACTIVATE -> repository.activateOnDemand(
+                        windowId,
+                        System.currentTimeMillis(),
+                        intent.getIntExtra(EXTRA_MINUTES, 60),
+                    )
                     ACTION_DEACTIVATE -> repository.deactivateOnDemand(windowId)
                     ACTION_EXTEND -> repository.extendEstimate(windowId, intent.getIntExtra(EXTRA_MINUTES, 15))
                 }
@@ -29,6 +34,7 @@ class OnDemandActionReceiver : BroadcastReceiver() {
     }
 
     companion object {
+        const val ACTION_ACTIVATE = "com.focusguard.action.ACTIVATE_ON_DEMAND"
         const val ACTION_DEACTIVATE = "com.focusguard.action.DEACTIVATE_ON_DEMAND"
         const val ACTION_EXTEND = "com.focusguard.action.EXTEND_ON_DEMAND"
         const val EXTRA_WINDOW_ID = "window_id"

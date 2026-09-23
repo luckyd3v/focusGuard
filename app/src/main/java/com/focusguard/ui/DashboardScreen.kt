@@ -33,10 +33,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.focusguard.R
 import com.focusguard.service.LiveSession
 import com.focusguard.service.Notifications
 import com.focusguard.util.TimeFormat
@@ -85,7 +87,7 @@ fun DashboardScreen(vm: MainViewModel) {
         }
 
         if (date == today && currentLive != null) {
-            item { LiveSessionCard(currentLive) }
+            item { LiveSessionCard(currentLive, onDeactivateOnDemand = { vm.deactivateOnDemand(it) }) }
         }
 
         val onDemand = windows.filter { it.onDemand && it.enabled }
@@ -152,7 +154,7 @@ private fun DateSelector(
 }
 
 @Composable
-private fun LiveSessionCard(live: LiveSession) {
+private fun LiveSessionCard(live: LiveSession, onDeactivateOnDemand: (windowId: Long) -> Unit) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(live.startedAt) {
         while (true) {
@@ -169,7 +171,18 @@ private fun LiveSessionCard(live: LiveSession) {
         ),
     ) {
         Column(Modifier.fillMaxWidth().padding(20.dp)) {
-            Text("Desbloqueio atual", style = MaterialTheme.typography.labelLarge)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Desbloqueio atual", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                val windowId = live.windowId
+                if (live.onDemand && windowId != null) {
+                    IconButton(onClick = { onDeactivateOnDemand(windowId) }) {
+                        Icon(
+                            painterResource(R.drawable.ic_power),
+                            contentDescription = "Desligar ${live.windowName}",
+                        )
+                    }
+                }
+            }
             Text(
                 TimeFormat.clock(elapsed),
                 style = MaterialTheme.typography.displayMedium,

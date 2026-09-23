@@ -264,7 +264,14 @@ class FocusMonitorService : Service() {
 
     private fun publish() {
         LiveSessionState.mutableCurrent.value = session?.let {
-            LiveSession(it.startedAt, it.window?.name, it.window?.limitMinutes, it.limitAnchor)
+            LiveSession(
+                startedAt = it.startedAt,
+                windowName = it.window?.name,
+                limitMinutes = it.window?.limitMinutes,
+                limitAnchor = it.limitAnchor,
+                windowId = it.window?.id,
+                onDemand = it.window?.onDemand == true,
+            )
         }
     }
 

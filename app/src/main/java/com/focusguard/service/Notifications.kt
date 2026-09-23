@@ -47,8 +47,14 @@ object Notifications {
 
     // ------------------------------------------------------------ ações das janelas sob demanda
 
-    /** Abre o app já pedindo a estimativa de duração para ligar a janela. */
+    /**
+     * Com estimativa fixa, liga a janela direto. Sem ela, abre o app já pedindo a estimativa.
+     */
     fun activateAction(context: Context, window: UsageWindow): NotificationCompat.Action {
+        window.fixedEstimateMinutes?.let { minutes ->
+            val pending = receiverIntent(context, window, OnDemandActionReceiver.ACTION_ACTIVATE, 4, minutes)
+            return NotificationCompat.Action(0, "Ligar ${window.name}", pending)
+        }
         val intent = Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             .putExtra(MainActivity.EXTRA_ACTIVATE_WINDOW_ID, window.id)
@@ -71,11 +77,17 @@ object Notifications {
             receiverIntent(context, window, OnDemandActionReceiver.ACTION_EXTEND, 3),
         )
 
-    private fun receiverIntent(context: Context, window: UsageWindow, action: String, code: Int): PendingIntent {
+    private fun receiverIntent(
+        context: Context,
+        window: UsageWindow,
+        action: String,
+        code: Int,
+        minutes: Int = EXTEND_MINUTES,
+    ): PendingIntent {
         val intent = Intent(context, OnDemandActionReceiver::class.java)
             .setAction(action)
             .putExtra(OnDemandActionReceiver.EXTRA_WINDOW_ID, window.id)
-            .putExtra(OnDemandActionReceiver.EXTRA_MINUTES, EXTEND_MINUTES)
+            .putExtra(OnDemandActionReceiver.EXTRA_MINUTES, minutes)
         return PendingIntent.getBroadcast(
             context,
             requestCode(window, code),

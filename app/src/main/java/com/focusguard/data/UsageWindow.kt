@@ -32,8 +32,10 @@ data class UsageWindow(
     @ColumnInfo(defaultValue = "0") val onDemand: Boolean = false,
     /** Instante em que a janela sob demanda foi ligada (null = desligada). */
     val activatedAt: Long? = null,
-    /** Duração estimada pelo usuário ao ligar a janela sob demanda; fica salva como sugestão para a próxima vez. */
+    /** Duração estimada da ativação atual; fica salva como sugestão para a próxima vez. */
     val estimateMinutes: Int? = null,
+    /** Estimativa constante configurada na janela (null = perguntar sempre ao ligar). */
+    val fixedEstimateMinutes: Int? = null,
 ) {
     val isOnDemandActive: Boolean get() = onDemand && enabled && activatedAt != null
 
