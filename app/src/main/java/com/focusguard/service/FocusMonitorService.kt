@@ -7,9 +7,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
+import android.media.AudioAttributes
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.VibrationAttributes
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -353,7 +355,7 @@ class FocusMonitorService : Service() {
             Notifications.showLimitExceeded(this, window.name, window.limitMinutes)
             s.nextAlertAt = now + FocusConfig.SNOOZE_MINUTES * 60_000L
         }
-        vibrate()
+        vibrateLimitAlert()
     }
 
     private fun goHome() {
@@ -363,14 +365,38 @@ class FocusMonitorService : Service() {
         runCatching { startActivity(home) }
     }
 
+    private fun vibrator(): Vibrator? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        getSystemService(VibratorManager::class.java)?.defaultVibrator
+    } else {
+        @Suppress("DEPRECATION")
+        getSystemService(Vibrator::class.java)
+    }
+
     private fun vibrate() {
-        val vibrator: Vibrator? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            getSystemService(VibratorManager::class.java)?.defaultVibrator
+        runCatching { vibrator()?.vibrate(VibrationEffect.createOneShot(350, VibrationEffect.DEFAULT_AMPLITUDE)) }
+    }
+
+    /**
+     * Três pulsos fortes quando o limite estoura, para assustar mesmo. Usa a categoria de alarme
+     * para não ser silenciada como vibração de toque/notificação comum.
+     */
+    private fun vibrateLimitAlert() {
+        val vibrator = vibrator() ?: return
+        val timings = longArrayOf(0, 500, 200, 500, 200, 500)
+        val effect = if (vibrator.hasAmplitudeControl()) {
+            VibrationEffect.createWaveform(timings, intArrayOf(0, 255, 0, 255, 0, 255), -1)
         } else {
-            @Suppress("DEPRECATION")
-            getSystemService(Vibrator::class.java)
+            VibrationEffect.createWaveform(timings, -1)
         }
-        runCatching { vibrator?.vibrate(VibrationEffect.createOneShot(350, VibrationEffect.DEFAULT_AMPLITUDE)) }
+        runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                vibrator.vibrate(effect, VibrationAttributes.createForUsage(VibrationAttributes.USAGE_ALARM))
+            } else {
+                val audio = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build()
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(effect, audio)
+            }
+        }
     }
 
     // ---------------------------------------------------------------- notificação
