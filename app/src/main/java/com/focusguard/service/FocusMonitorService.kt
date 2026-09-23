@@ -60,14 +60,14 @@ class FocusMonitorService : Service() {
     private var lastHeartbeatWrite = 0L
     private var lastNotificationUpdate = 0L
 
+    /**
+     * No Android 14+ esses broadcasts podem chegar com segundos de atraso, fora de ordem entre si
+     * (SCREEN_ON/OFF são urgentes, USER_PRESENT não) ou ser descartados quando outro do mesmo
+     * grupo os substitui. Por isso servem só de gatilho: o estado real é sempre lido do sistema.
+     */
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            when (intent.action) {
-                Intent.ACTION_USER_PRESENT -> onUnlocked()
-                // Aparelhos sem bloqueio de tela não emitem USER_PRESENT de forma confiável
-                Intent.ACTION_SCREEN_ON -> if (!keyguard.isKeyguardLocked) onUnlocked()
-                Intent.ACTION_SCREEN_OFF -> onLocked()
-            }
+            syncWithDevice()
         }
     }
 
@@ -98,6 +98,7 @@ class FocusMonitorService : Service() {
         }
 
         restoreOrStart()
+        startTicker()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -115,7 +116,9 @@ class FocusMonitorService : Service() {
         // Se o usuário desligou o monitoramento, encerra a sessão agora.
         // Caso contrário (sistema matou o serviço), deixa a sessão salva para ser retomada.
         if (!app.settings.monitoringEnabled) {
-            session?.let { endSession(it, System.currentTimeMillis()) }
+            // Sem atualizar a notificação: o serviço já saiu do primeiro plano e um notify()
+            // aqui recriaria uma notificação "Aguardando..." órfã, sem serviço por trás.
+            session?.let { endSession(it, System.currentTimeMillis(), updateNotification = false) }
             session = null
         }
         LiveSessionState.mutableCurrent.value = null
@@ -148,7 +151,17 @@ class FocusMonitorService : Service() {
         if (isUnlockedNow()) beginSession(System.currentTimeMillis())
     }
 
-    private fun onUnlocked() = beginSession(System.currentTimeMillis())
+    /**
+     * Abre ou fecha a sessão conforme o estado atual do aparelho. Chamado a cada broadcast e a
+     * cada segundo pelo cronômetro, de modo que um evento atrasado, fora de ordem ou perdido
+     * não deixa o serviço preso em "Aguardando" nem encerra uma sessão que está em uso.
+     */
+    private fun syncWithDevice() {
+        when {
+            !power.isInteractive -> onLocked()
+            session == null && !keyguard.isKeyguardLocked -> beginSession(System.currentTimeMillis())
+        }
+    }
 
     private fun beginSession(startedAt: Long) {
         if (session != null) return
@@ -161,25 +174,23 @@ class FocusMonitorService : Service() {
         refreshWindow(s, now)
         publish()
         updateNotification(force = true)
-        startTicker()
     }
 
     private fun onLocked() {
         val s = session ?: return
         session = null
-        ticker?.cancel()
         overlay.hide()
         endSession(s, System.currentTimeMillis())
     }
 
-    private fun endSession(s: ActiveSession, endedAt: Long) {
+    private fun endSession(s: ActiveSession, endedAt: Long, updateNotification: Boolean = true) {
         app.settings.clearActiveSession()
         LiveSessionState.mutableCurrent.value = null
         Notifications.cancelLimitAlert(this)
         buildRecord(s.startedAt, endedAt, s.window, s.limitAnchor)?.let { record ->
             app.appScope.launch { app.repository.recordSession(record) }
         }
-        updateNotification(force = true)
+        if (updateNotification) updateNotification(force = true)
     }
 
     private fun buildRecord(start: Long, end: Long, window: UsageWindow?, limitAnchor: Long): UsageSession? {
@@ -232,6 +243,10 @@ class FocusMonitorService : Service() {
 
     // ---------------------------------------------------------------- cronômetro e alerta
 
+    /**
+     * Roda enquanto o serviço existir. Com a tela apagada o aparelho entra em suspensão e o
+     * delay() não dispara, então o custo fora de uso é praticamente nulo.
+     */
     private fun startTicker() {
         ticker?.cancel()
         ticker = scope.launch {
@@ -243,14 +258,9 @@ class FocusMonitorService : Service() {
     }
 
     private fun tick() {
+        syncWithDevice()
         val s = session ?: return
         val now = System.currentTimeMillis()
-
-        // Segurança: se perdemos o SCREEN_OFF, encerra aqui.
-        if (!power.isInteractive) {
-            onLocked()
-            return
-        }
 
         refreshWindow(s, now)
 
