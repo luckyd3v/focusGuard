@@ -93,6 +93,31 @@ class UsageWindowTest {
     }
 
     @Test
+    fun `desbloqueio dividido por troca de janela conta uma vez no total`() {
+        val leitura = UsageWindow(
+            id = 5, name = "Leitura", startMinuteOfDay = 0, endMinuteOfDay = 0,
+            limitMinutes = 30, onDemand = true,
+        )
+        val inicio = millis(at(22, 10))
+        val troca = inicio + 4 * 60_000L
+        val fim = troca + 20 * 60_000L
+        // 4 min no Expediente, janela sob demanda ligada, mais 20 min na Leitura: um só desbloqueio.
+        val sessions = listOf(
+            UsageSession(windowId = 1, windowName = "Expediente", limitMinutes = 10,
+                startTime = inicio, endTime = troca, exceeded = false),
+            UsageSession(windowId = 5, windowName = "Leitura", limitMinutes = 30,
+                startTime = troca, endTime = fim, exceeded = false, continuation = true),
+        )
+        val stats = buildDayStats(LocalDate.of(2026, 9, 22), sessions, listOf(expediente, leitura))
+
+        assertEquals(1, stats.unlocks)
+        assertEquals(24 * 60_000L, stats.totalMs)
+        assertEquals(4 * 60_000L, stats.perWindow.first { it.name == "Expediente" }.totalMs)
+        assertEquals(20 * 60_000L, stats.perWindow.first { it.name == "Leitura" }.totalMs)
+        assertEquals(1, stats.perWindow.first { it.name == "Leitura" }.unlocks)
+    }
+
+    @Test
     fun `estatisticas somam tempo e desbloqueios por janela`() {
         fun session(startH: Int, minutes: Int, windowId: Long?) = UsageSession(
             windowId = windowId, windowName = if (windowId == null) null else "Expediente",

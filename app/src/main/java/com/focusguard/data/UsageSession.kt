@@ -1,11 +1,14 @@
 package com.focusguard.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
- * Uma sessão = intervalo entre um desbloqueio e o bloqueio seguinte.
+ * Uma sessão = intervalo entre um desbloqueio e o bloqueio seguinte. Se a janela de uso muda
+ * no meio do desbloqueio, o intervalo é dividido em trechos, um por janela; os trechos seguintes
+ * ao primeiro são marcados como [continuation] para não contarem como novos desbloqueios.
  * Guarda uma cópia do nome e do limite da janela para que o histórico
  * continue legível mesmo se a janela for editada ou excluída.
  */
@@ -21,6 +24,7 @@ data class UsageSession(
     val startTime: Long,
     val endTime: Long,
     val exceeded: Boolean,
+    @ColumnInfo(defaultValue = "0") val continuation: Boolean = false,
 )
 
 val UsageSession.durationMs: Long

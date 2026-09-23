@@ -26,6 +26,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
+import com.focusguard.R
 import com.focusguard.app
 import com.focusguard.ui.theme.FocusGuardTheme
 
@@ -37,7 +39,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         if (savedInstanceState == null) handleIntent(intent)
         // Primeira execução (monitoramento desligado) abre direto na configuração.
-        val initialTab = if (app.settings.monitoringEnabled) 0 else 2
+        val initialTab = if (app.settings.monitoringEnabled) TAB_USO else TAB_CONFIGURAR
         setContent {
             FocusGuardTheme {
                 FocusGuardRoot(initialTab, vm)
@@ -64,12 +66,18 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private data class Tab(val label: String, val icon: ImageVector)
+private data class Tab(val label: String, val icon: @Composable () -> ImageVector)
+
+private const val TAB_USO = 0
+private const val TAB_ESTATISTICAS = 1
+private const val TAB_JANELAS = 2
+private const val TAB_CONFIGURAR = 3
 
 private val tabs = listOf(
-    Tab("Uso", Icons.Filled.Home),
-    Tab("Janelas", Icons.Filled.DateRange),
-    Tab("Configurar", Icons.Filled.Settings),
+    Tab("Uso") { Icons.Filled.Home },
+    Tab("Janelas") { Icons.Filled.DateRange },
+    Tab("Estatísticas") { ImageVector.vectorResource(R.drawable.ic_bar_chart) },
+    Tab("Configurar") { Icons.Filled.Settings },
 )
 
 @Composable
@@ -90,7 +98,7 @@ private fun FocusGuardRoot(initialTab: Int, vm: MainViewModel) {
                     NavigationBarItem(
                         selected = selected == index,
                         onClick = { selected = index },
-                        icon = { Icon(tab.icon, contentDescription = null) },
+                        icon = { Icon(tab.icon(), contentDescription = null) },
                         label = { Text(tab.label) },
                     )
                 }
@@ -99,8 +107,9 @@ private fun FocusGuardRoot(initialTab: Int, vm: MainViewModel) {
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             when (selected) {
-                0 -> DashboardScreen(vm)
-                1 -> WindowsScreen(vm)
+                TAB_USO -> DashboardScreen(vm)
+                TAB_ESTATISTICAS -> StatsScreen(vm)
+                TAB_JANELAS -> WindowsScreen(vm)
                 else -> SetupScreen(vm)
             }
         }

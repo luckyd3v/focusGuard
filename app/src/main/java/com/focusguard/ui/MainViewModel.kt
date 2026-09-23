@@ -182,7 +182,8 @@ internal fun buildDayStats(
     return DayStats(
         date = date,
         totalMs = sessions.sumOf { it.durationMs },
-        unlocks = sessions.size,
+        // Trechos de continuação são o mesmo desbloqueio contado em outra janela.
+        unlocks = sessions.count { !it.continuation },
         perWindow = stats,
     )
 }

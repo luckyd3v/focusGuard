@@ -25,6 +25,13 @@ class SettingsStore(context: Context) {
             prefs.edit().putLong(KEY_SESSION_START, value).apply()
         }
 
+    /** A sessão em andamento é um trecho de continuação (houve troca de janela neste desbloqueio). */
+    var activeSessionContinuation: Boolean
+        get() = prefs.getBoolean(KEY_SESSION_CONTINUATION, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_SESSION_CONTINUATION, value).apply()
+        }
+
     /** Último instante em que o serviço confirmou que a tela estava em uso. */
     var lastHeartbeat: Long
         get() = prefs.getLong(KEY_HEARTBEAT, 0L)
@@ -33,12 +40,13 @@ class SettingsStore(context: Context) {
         }
 
     fun clearActiveSession() {
-        prefs.edit().remove(KEY_SESSION_START).remove(KEY_HEARTBEAT).apply()
+        prefs.edit().remove(KEY_SESSION_START).remove(KEY_SESSION_CONTINUATION).remove(KEY_HEARTBEAT).apply()
     }
 
     private companion object {
         const val KEY_MONITORING = "monitoring_enabled"
         const val KEY_SESSION_START = "active_session_start"
         const val KEY_HEARTBEAT = "active_session_heartbeat"
+        const val KEY_SESSION_CONTINUATION = "active_session_continuation"
     }
 }

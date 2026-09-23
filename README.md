@@ -33,9 +33,15 @@ Testes unitários da lógica de janelas e estatísticas: `./gradlew test`.
 Regras de negócio:
 
 - **Sessão** = do desbloqueio até a tela apagar. Sessões com menos de 2 s são descartadas.
-- A sessão conta para a janela ativa **no momento do desbloqueio**. Se o desbloqueio aconteceu fora
-  de qualquer janela e uma janela começa durante o uso, o limite passa a contar a partir do início dela.
+- O tempo conta para a janela **em vigor a cada momento**. Se a janela muda no meio do desbloqueio
+  (horário que começa ou termina, janela sob demanda ligada/desligada, janela editada ou excluída),
+  o trecho anterior é gravado na janela antiga e o cronômetro e o limite recomeçam do zero na nova.
+  Os trechos seguintes ao primeiro não contam como novos desbloqueios nas estatísticas.
 - Janelas sobrepostas: vale a de **menor limite**.
+- **Janelas sob demanda** não têm horário: valem enquanto o usuário as mantém ligadas e, nesse
+  período, substituem as janelas por horário. Só uma fica ligada por vez. Ao ligar, o app pede a
+  duração estimada (ou usa a estimativa fixa configurada) e, quando ela passa, pergunta se o
+  usuário quer desligar a janela.
 - Ao estourar o limite, o overlay oferece **"Parar e ir para a tela inicial"** (se o uso continuar,
   o alerta volta em 1 min) ou **"Continuar por mais 5 min"**. Valores em `FocusConfig`.
 - Sem permissão de overlay, o alerta vira uma notificação de alta prioridade.

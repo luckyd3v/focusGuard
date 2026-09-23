@@ -45,9 +45,15 @@ import kotlinx.coroutines.launch
  */
 class FocusMonitorService : Service() {
 
+    /**
+     * Trecho em andamento de um desbloqueio. Quando a janela muda, o trecho é gravado e outro
+     * começa: [startedAt] passa a ser o início do trecho e [continuation] fica true.
+     */
     private class ActiveSession(
-        val startedAt: Long,
+        var startedAt: Long,
+        var continuation: Boolean = false,
         var window: UsageWindow? = null,
+        var windowResolved: Boolean = false,
         var limitAnchor: Long = startedAt,
         var nextAlertAt: Long? = null,
     )
@@ -58,6 +64,8 @@ class FocusMonitorService : Service() {
     private lateinit var power: PowerManager
 
     private var windows: List<UsageWindow> = emptyList()
+    /** Até o banco responder, [windows] vazio não significa "nenhuma janela". */
+    private var windowsLoaded = false
     private var session: ActiveSession? = null
     private var ticker: Job? = null
     private var lastHeartbeatWrite = 0L
@@ -98,6 +106,7 @@ class FocusMonitorService : Service() {
         scope.launch {
             app.repository.observeWindows().collect { list ->
                 windows = list
+                windowsLoaded = true
                 val now = System.currentTimeMillis()
                 session?.let { refreshWindow(it, now) }
                 checkEstimate(now)
@@ -146,8 +155,9 @@ class FocusMonitorService : Service() {
         val settings = app.settings
         val pendingStart = settings.activeSessionStart
         if (pendingStart > 0) {
+            val continuation = settings.activeSessionContinuation
             if (isUnlockedNow()) {
-                beginSession(pendingStart)
+                beginSession(pendingStart, continuation)
                 return
             }
             // A tela foi bloqueada enquanto o serviço estava morto: fecha no último heartbeat.
@@ -155,7 +165,8 @@ class FocusMonitorService : Service() {
             settings.clearActiveSession()
             app.appScope.launch {
                 val window = WindowMatcher.match(app.repository.windowsOnce(), pendingStart)
-                buildRecord(pendingStart, end, window, pendingStart)?.let { app.repository.recordSession(it) }
+                buildRecord(pendingStart, end, window, pendingStart, continuation)
+                    ?.let { app.repository.recordSession(it) }
             }
         }
         if (isUnlockedNow()) beginSession(System.currentTimeMillis())
@@ -173,12 +184,13 @@ class FocusMonitorService : Service() {
         }
     }
 
-    private fun beginSession(startedAt: Long) {
+    private fun beginSession(startedAt: Long, continuation: Boolean = false) {
         if (session != null) return
         val now = System.currentTimeMillis()
-        val s = ActiveSession(startedAt)
+        val s = ActiveSession(startedAt, continuation)
         session = s
         app.settings.activeSessionStart = startedAt
+        app.settings.activeSessionContinuation = continuation
         app.settings.lastHeartbeat = now
         lastHeartbeatWrite = now
         refreshWindow(s, now)
@@ -197,13 +209,24 @@ class FocusMonitorService : Service() {
         app.settings.clearActiveSession()
         LiveSessionState.mutableCurrent.value = null
         Notifications.cancelLimitAlert(this)
-        buildRecord(s.startedAt, endedAt, s.window, s.limitAnchor)?.let { record ->
-            app.appScope.launch { app.repository.recordSession(record) }
-        }
+        recordSegment(s, endedAt)
         if (updateNotification) updateNotification(force = true)
     }
 
-    private fun buildRecord(start: Long, end: Long, window: UsageWindow?, limitAnchor: Long): UsageSession? {
+    /** Grava o trecho atual até [endedAt]. @return false se ele foi curto demais e descartado. */
+    private fun recordSegment(s: ActiveSession, endedAt: Long): Boolean {
+        val record = buildRecord(s.startedAt, endedAt, s.window, s.limitAnchor, s.continuation) ?: return false
+        app.appScope.launch { app.repository.recordSession(record) }
+        return true
+    }
+
+    private fun buildRecord(
+        start: Long,
+        end: Long,
+        window: UsageWindow?,
+        limitAnchor: Long,
+        continuation: Boolean,
+    ): UsageSession? {
         if (end - start < FocusConfig.MIN_SESSION_MS) return null
         return UsageSession(
             windowId = window?.id,
@@ -212,38 +235,39 @@ class FocusMonitorService : Service() {
             startTime = start,
             endTime = end,
             exceeded = window != null && end - limitAnchor > window.limitMs,
+            continuation = continuation,
         )
     }
 
     /**
-     * Define/atualiza a janela associada à sessão:
-     *  - uma janela sob demanda ligada sobrepõe todas as outras, inclusive no meio da sessão;
-     *  - senão mantém a janela por horário atual se ela ainda existir (edições de limite são aplicadas);
-     *  - senão usa a janela ativa no momento do desbloqueio;
-     *  - senão, se uma janela começar durante a sessão, passa a contar o limite a partir dali.
+     * Define/atualiza a janela associada à sessão: vale sempre a janela em vigor agora (uma sob
+     * demanda ligada sobrepõe as por horário; entre estas, a de menor limite).
+     *
+     * Quando a janela muda no meio do desbloqueio (sob demanda ligada/desligada, horário que
+     * começa ou termina, janela editada, desativada ou excluída), o tempo até aqui é gravado na
+     * janela anterior e um novo trecho começa, com cronômetro e limite zerados para a nova janela.
      */
     private fun refreshWindow(s: ActiveSession, now: Long) {
+        // Sem as janelas carregadas, resolver agora geraria uma falsa troca de janela logo depois.
+        if (!windowsLoaded) return
         val old = s.window
-        val kept = old?.takeIf { !it.onDemand }
-            ?.let { o -> windows.firstOrNull { it.id == o.id && it.enabled && !it.onDemand } }
-        val matched = WindowMatcher.onDemand(windows)
-            ?: kept
-            ?: WindowMatcher.scheduled(windows, s.startedAt)
-            ?: WindowMatcher.scheduled(windows, now)
-        if (matched == old) return
+        val matched = WindowMatcher.match(windows, now)
+        if (s.windowResolved && matched == old) return
 
-        s.window = matched
         when {
-            matched == null -> s.nextAlertAt = null
-            old != null && old.id == matched.id && old.activatedAt == matched.activatedAt -> {
-                if (old.limitMinutes != matched.limitMinutes) {
-                    s.nextAlertAt = s.limitAnchor + matched.limitMs
-                }
+            !s.windowResolved -> {
+                // Primeira definição do trecho (desbloqueio ou sessão recuperada).
+                s.windowResolved = true
+                s.window = matched
+                s.limitAnchor = matched?.let { limitAnchorFor(it, s.startedAt, now) } ?: s.startedAt
+                s.nextAlertAt = matched?.let { s.limitAnchor + it.limitMs }
             }
-            else -> {
-                s.limitAnchor = limitAnchorFor(matched, switching = old != null, s.startedAt, now)
-                s.nextAlertAt = s.limitAnchor + matched.limitMs
+            old != null && matched != null && old.id == matched.id && old.activatedAt == matched.activatedAt -> {
+                // Mesma janela editada: só o limite muda, o trecho continua.
+                s.window = matched
+                if (old.limitMinutes != matched.limitMinutes) s.nextAlertAt = s.limitAnchor + matched.limitMs
             }
+            else -> startNewSegment(s, matched, now)
         }
         // A nova janela pode ter limite maior (ou nenhum): tira o alerta que não vale mais.
         if (overlay.isShowing && s.nextAlertAt.let { it == null || now < it }) overlay.hide()
@@ -251,15 +275,26 @@ class FocusMonitorService : Service() {
         if (old != null) updateNotification(force = true)
     }
 
+    /** Grava o trecho da janela anterior e começa a contar do zero para [window]. */
+    private fun startNewSegment(s: ActiveSession, window: UsageWindow?, now: Long) {
+        // Se o trecho anterior foi curto demais e descartado, o novo herda o papel de "desbloqueio".
+        if (recordSegment(s, now)) s.continuation = true
+        s.startedAt = now
+        s.window = window
+        s.limitAnchor = now
+        s.nextAlertAt = window?.let { now + it.limitMs }
+        app.settings.activeSessionStart = now
+        app.settings.activeSessionContinuation = s.continuation
+        Notifications.cancelLimitAlert(this)
+    }
+
     /**
-     * A partir de quando o limite de [window] é contado nesta sessão:
+     * A partir de quando o limite de [window] é contado no início de um desbloqueio:
      *  - sob demanda: desde que foi ligada (ou desde o desbloqueio, se já estava ligada);
-     *  - troca de janela no meio da sessão (ex.: janela sob demanda desligada): a partir de agora;
-     *  - senão: desde o desbloqueio, se a janela já valia naquele momento.
+     *  - senão: desde o desbloqueio, se a janela já valia naquele momento; ou a partir de agora.
      */
-    private fun limitAnchorFor(window: UsageWindow, switching: Boolean, startedAt: Long, now: Long): Long = when {
+    private fun limitAnchorFor(window: UsageWindow, startedAt: Long, now: Long): Long = when {
         window.onDemand -> maxOf(startedAt, window.activatedAt ?: now)
-        switching -> now
         window.isActiveAt(startedAt) -> startedAt
         else -> now
     }
