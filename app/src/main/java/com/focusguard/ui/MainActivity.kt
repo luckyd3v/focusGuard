@@ -1,8 +1,10 @@
 package com.focusguard.ui
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,26 +20,47 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.focusguard.app
 import com.focusguard.ui.theme.FocusGuardTheme
 
 class MainActivity : ComponentActivity() {
+    private val vm: MainViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        if (savedInstanceState == null) handleIntent(intent)
         // Primeira execução (monitoramento desligado) abre direto na configuração.
         val initialTab = if (app.settings.monitoringEnabled) 0 else 2
         setContent {
             FocusGuardTheme {
-                FocusGuardRoot(initialTab)
+                FocusGuardRoot(initialTab, vm)
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    /** Botão "Ligar ..." da notificação: abre o pedido de estimativa da janela sob demanda. */
+    private fun handleIntent(intent: Intent?) {
+        val windowId = intent?.getLongExtra(EXTRA_ACTIVATE_WINDOW_ID, -1L) ?: -1L
+        if (windowId >= 0) {
+            intent?.removeExtra(EXTRA_ACTIVATE_WINDOW_ID)
+            vm.requestActivation(windowId)
+        }
+    }
+
+    companion object {
+        const val EXTRA_ACTIVATE_WINDOW_ID = "com.focusguard.extra.ACTIVATE_WINDOW_ID"
     }
 }
 
@@ -50,8 +73,16 @@ private val tabs = listOf(
 )
 
 @Composable
-private fun FocusGuardRoot(initialTab: Int, vm: MainViewModel = viewModel()) {
+private fun FocusGuardRoot(initialTab: Int, vm: MainViewModel) {
     var selected by rememberSaveable { mutableIntStateOf(initialTab) }
+    val pendingActivation by vm.pendingActivation.collectAsStateWithLifecycle()
+    pendingActivation?.let { window ->
+        EstimateDialog(
+            window = window,
+            onConfirm = { minutes -> vm.activateOnDemand(window, minutes) },
+            onDismiss = vm::cancelActivation,
+        )
+    }
     Scaffold(
         bottomBar = {
             NavigationBar {

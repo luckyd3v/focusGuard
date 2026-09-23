@@ -70,7 +70,8 @@ fun WindowsScreen(vm: MainViewModel) {
             item {
                 ScreenTitle(
                     "Janelas de uso",
-                    "Em cada janela, cada desbloqueio tem um tempo máximo. Se as janelas se sobrepõem, vale a de menor limite.",
+                    "Em cada janela, cada desbloqueio tem um tempo máximo. Se as janelas se sobrepõem, vale a de menor limite. " +
+                        "Uma janela sob demanda, enquanto ligada, substitui as janelas por horário.",
                 )
             }
             if (windows.isEmpty()) {
@@ -86,7 +87,13 @@ fun WindowsScreen(vm: MainViewModel) {
             items(windows, key = { it.id }) { window ->
                 WindowCard(
                     window = window,
-                    onToggle = { vm.setWindowEnabled(window, it) },
+                    onToggle = {
+                        when {
+                            !window.onDemand -> vm.setWindowEnabled(window, it)
+                            it -> vm.requestActivation(window) // pede a estimativa antes de ligar
+                            else -> vm.deactivateOnDemand(window)
+                        }
+                    },
                     onEdit = { editing = window },
                     onDelete = { deleting = window },
                 )
@@ -143,12 +150,17 @@ private fun WindowCard(
                 Column(Modifier.weight(1f)) {
                     Text(window.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text(
-                        "${window.rangeLabel()}, ${window.daysLabel().lowercase()}",
+                        windowDescription(window),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (window.isOnDemandActive) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Switch(checked = window.enabled, onCheckedChange = onToggle)
+                // Por horário: habilita/desabilita a janela. Sob demanda: liga/desliga agora.
+                Switch(
+                    checked = if (window.onDemand) window.isOnDemandActive else window.enabled,
+                    onCheckedChange = onToggle,
+                )
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -165,6 +177,13 @@ private fun WindowCard(
     }
 }
 
+private fun windowDescription(window: UsageWindow): String {
+    if (!window.onDemand) return "${window.rangeLabel()}, ${window.daysLabel().lowercase()}"
+    val since = window.activatedAt ?: return "Sob demanda, desligada"
+    val until = window.estimatedEndAt?.let { ", estimativa até ${TimeFormat.timeOfDay(it)}" }.orEmpty()
+    return "Sob demanda, ligada desde ${TimeFormat.timeOfDay(since)}$until"
+}
+
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 private fun WindowEditorDialog(
@@ -177,10 +196,11 @@ private fun WindowEditorDialog(
     var end by remember { mutableIntStateOf(initial.endMinuteOfDay) }
     var limitText by remember { mutableStateOf(initial.limitMinutes.toString()) }
     var days by remember { mutableIntStateOf(initial.daysMask) }
+    var onDemand by remember { mutableStateOf(initial.onDemand) }
 
     val limit = limitText.toIntOrNull()
     val limitValid = limit != null && limit in 1..1440
-    val valid = name.isNotBlank() && limitValid && days != 0
+    val valid = name.isNotBlank() && limitValid && (onDemand || days != 0)
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -199,13 +219,27 @@ private fun WindowEditorDialog(
                     modifier = Modifier.fillMaxWidth(),
                 )
 
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    TimeButton("Início", start, Modifier.weight(1f)) { start = it }
-                    TimeButton("Fim", end, Modifier.weight(1f)) { end = it }
+                Column {
+                    Text("Quando vale", style = MaterialTheme.typography.labelLarge)
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(selected = !onDemand, onClick = { onDemand = false }, label = { Text("Por horário") })
+                        FilterChip(selected = onDemand, onClick = { onDemand = true }, label = { Text("Sob demanda") })
+                    }
+                    if (onDemand) {
+                        HintText("Você liga e desliga a janela quando quiser. Enquanto ligada, ela substitui as janelas por horário.")
+                    }
                 }
-                when {
-                    end == start -> HintText("Início igual ao fim: a janela vale o dia inteiro.")
-                    end < start -> HintText("A janela atravessa a meia-noite e termina no dia seguinte.")
+
+                if (!onDemand) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        TimeButton("Início", start, Modifier.weight(1f)) { start = it }
+                        TimeButton("Fim", end, Modifier.weight(1f)) { end = it }
+                    }
+                    when {
+                        end == start -> HintText("Início igual ao fim: a janela vale o dia inteiro.")
+                        end < start -> HintText("A janela atravessa a meia-noite e termina no dia seguinte.")
+                    }
                 }
 
                 OutlinedTextField(
@@ -218,7 +252,7 @@ private fun WindowEditorDialog(
                     modifier = Modifier.fillMaxWidth(),
                 )
 
-                Column {
+                if (!onDemand) Column {
                     Text("Dias da semana", style = MaterialTheme.typography.labelLarge)
                     Spacer(Modifier.height(6.dp))
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -246,6 +280,11 @@ private fun WindowEditorDialog(
                             endMinuteOfDay = end,
                             limitMinutes = limit ?: initial.limitMinutes,
                             daysMask = days,
+                            onDemand = onDemand,
+                            // Em janelas sob demanda o interruptor controla a ativação, não o "enabled".
+                            enabled = onDemand || initial.enabled,
+                            // Virar janela por horário desliga a ativação sob demanda.
+                            activatedAt = if (onDemand) initial.activatedAt else null,
                         )
                     )
                 },

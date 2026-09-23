@@ -38,6 +38,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.focusguard.service.LiveSession
+import com.focusguard.service.Notifications
 import com.focusguard.util.TimeFormat
 import kotlinx.coroutines.delay
 import java.time.LocalDate
@@ -53,6 +54,7 @@ fun DashboardScreen(vm: MainViewModel) {
     val date by vm.selectedDate.collectAsStateWithLifecycle()
     val live by vm.live.collectAsStateWithLifecycle()
     val monitoring by vm.monitoringEnabled.collectAsStateWithLifecycle()
+    val windows by vm.windows.collectAsStateWithLifecycle()
     val today = LocalDate.now()
     val currentLive = live
 
@@ -84,6 +86,18 @@ fun DashboardScreen(vm: MainViewModel) {
 
         if (date == today && currentLive != null) {
             item { LiveSessionCard(currentLive) }
+        }
+
+        val onDemand = windows.filter { it.onDemand && it.enabled }
+        if (date == today && onDemand.isNotEmpty()) {
+            item {
+                OnDemandCard(
+                    windows = onDemand,
+                    onActivate = vm::requestActivation,
+                    onDeactivate = { vm.deactivateOnDemand(it) },
+                    onExtend = { vm.extendEstimate(it, Notifications.EXTEND_MINUTES) },
+                )
+            }
         }
 
         item { DaySummary(stats) }

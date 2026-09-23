@@ -1,11 +1,20 @@
 package com.focusguard.util
 
 import java.time.DayOfWeek
+import java.time.Instant
+import java.time.LocalTime
+import java.time.ZoneId
 import java.util.Locale
 
 object TimeFormat {
     fun minuteOfDay(minutes: Int): String =
         String.format(Locale.ROOT, "%02d:%02d", (minutes / 60) % 24, minutes % 60)
+
+    /** Hora local de um instante, ex.: "14:05". */
+    fun timeOfDay(epochMillis: Long): String {
+        val time = LocalTime.ofInstant(Instant.ofEpochMilli(epochMillis), ZoneId.systemDefault())
+        return minuteOfDay(time.hour * 60 + time.minute)
+    }
 
     /** Ex.: "2h 30min", "12 min", "40s". */
     fun duration(ms: Long): String {

@@ -61,6 +61,38 @@ class UsageWindowTest {
     }
 
     @Test
+    fun `janela sob demanda ligada sobrepoe as janelas por horario`() {
+        val reuniao = UsageWindow(
+            id = 3, name = "Reunião", startMinuteOfDay = 0, endMinuteOfDay = 0,
+            limitMinutes = 30, daysMask = UsageWindow.ALL_DAYS, onDemand = true,
+        )
+        val dez = millis(at(22, 10))
+        val noite = millis(at(22, 22))
+
+        // Desligada: vale a janela por horário e nunca "casa" pelo horário.
+        assertFalse(reuniao.isActiveAt(at(22, 10)))
+        assertEquals("Expediente", WindowMatcher.match(listOf(expediente, reuniao), dez)?.name)
+
+        // Ligada: sobrepõe mesmo com limite maior, e vale também fora das janelas por horário.
+        val ligada = reuniao.copy(activatedAt = dez)
+        assertEquals("Reunião", WindowMatcher.match(listOf(expediente, ligada), dez)?.name)
+        assertEquals("Reunião", WindowMatcher.match(listOf(expediente, ligada), noite)?.name)
+        assertNull(WindowMatcher.scheduled(listOf(ligada), dez))
+    }
+
+    @Test
+    fun `estimativa so vale para janela sob demanda ligada`() {
+        val base = UsageWindow(
+            id = 4, name = "Leitura", startMinuteOfDay = 0, endMinuteOfDay = 0,
+            limitMinutes = 30, onDemand = true, estimateMinutes = 45,
+        )
+        val dez = millis(at(22, 10))
+        assertNull(base.estimatedEndAt) // desligada: a estimativa fica só como sugestão
+        assertEquals(dez + 45 * 60_000L, base.copy(activatedAt = dez).estimatedEndAt)
+        assertNull(base.copy(activatedAt = dez, estimateMinutes = null).estimatedEndAt)
+    }
+
+    @Test
     fun `estatisticas somam tempo e desbloqueios por janela`() {
         fun session(startH: Int, minutes: Int, windowId: Long?) = UsageSession(
             windowId = windowId, windowName = if (windowId == null) null else "Expediente",

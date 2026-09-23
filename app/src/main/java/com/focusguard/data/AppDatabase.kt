@@ -4,14 +4,30 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [UsageWindow::class, UsageSession::class], version = 1, exportSchema = false)
+@Database(entities = [UsageWindow::class, UsageSession::class], version = 3, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun windowDao(): UsageWindowDao
     abstract fun sessionDao(): UsageSessionDao
 
     companion object {
+        /** v3: estimativa de duração das janelas sob demanda. */
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE usage_windows ADD COLUMN estimateMinutes INTEGER")
+            }
+        }
+
+        /** v2: janelas sob demanda. */
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE usage_windows ADD COLUMN onDemand INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE usage_windows ADD COLUMN activatedAt INTEGER")
+            }
+        }
+
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context, AppDatabase::class.java, "focusguard.db")
                 .addCallback(object : RoomDatabase.Callback() {
@@ -23,6 +39,7 @@ abstract class AppDatabase : RoomDatabase() {
                         )
                     }
                 })
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
     }
 }

@@ -13,6 +13,7 @@ import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.focusguard.app
@@ -59,6 +60,8 @@ class FocusMonitorService : Service() {
     private var ticker: Job? = null
     private var lastHeartbeatWrite = 0L
     private var lastNotificationUpdate = 0L
+    /** Fim de estimativa para o qual já perguntamos se o usuário quer desligar a janela. */
+    private var promptedEstimateEnd: Long? = null
 
     /**
      * No Android 14+ esses broadcasts podem chegar com segundos de atraso, fora de ordem entre si
@@ -93,7 +96,11 @@ class FocusMonitorService : Service() {
         scope.launch {
             app.repository.observeWindows().collect { list ->
                 windows = list
-                session?.let { refreshWindow(it, System.currentTimeMillis()) }
+                val now = System.currentTimeMillis()
+                session?.let { refreshWindow(it, now) }
+                checkEstimate(now)
+                // Os botões da notificação dependem das janelas sob demanda.
+                updateNotification(force = true)
             }
         }
 
@@ -111,6 +118,7 @@ class FocusMonitorService : Service() {
 
     override fun onDestroy() {
         runCatching { unregisterReceiver(screenReceiver) }
+        Notifications.cancelEstimateExceeded(this)
         ticker?.cancel()
         overlay.hide()
         // Se o usuário desligou o monitoramento, encerra a sessão agora.
@@ -207,32 +215,51 @@ class FocusMonitorService : Service() {
 
     /**
      * Define/atualiza a janela associada à sessão:
-     *  - mantém a janela atual se ela ainda existir (edições de limite são aplicadas);
+     *  - uma janela sob demanda ligada sobrepõe todas as outras, inclusive no meio da sessão;
+     *  - senão mantém a janela por horário atual se ela ainda existir (edições de limite são aplicadas);
      *  - senão usa a janela ativa no momento do desbloqueio;
      *  - senão, se uma janela começar durante a sessão, passa a contar o limite a partir dali.
      */
     private fun refreshWindow(s: ActiveSession, now: Long) {
         val old = s.window
-        val kept = old?.let { o -> windows.firstOrNull { it.id == o.id && it.enabled } }
-        val matched = kept
-            ?: WindowMatcher.match(windows, s.startedAt)
-            ?: WindowMatcher.match(windows, now)
+        val kept = old?.takeIf { !it.onDemand }
+            ?.let { o -> windows.firstOrNull { it.id == o.id && it.enabled && !it.onDemand } }
+        val matched = WindowMatcher.onDemand(windows)
+            ?: kept
+            ?: WindowMatcher.scheduled(windows, s.startedAt)
+            ?: WindowMatcher.scheduled(windows, now)
         if (matched == old) return
 
         s.window = matched
         when {
             matched == null -> s.nextAlertAt = null
-            old != null && old.id == matched.id -> {
+            old != null && old.id == matched.id && old.activatedAt == matched.activatedAt -> {
                 if (old.limitMinutes != matched.limitMinutes) {
                     s.nextAlertAt = s.limitAnchor + matched.limitMs
                 }
             }
             else -> {
-                s.limitAnchor = if (matched.isActiveAt(s.startedAt)) s.startedAt else now
+                s.limitAnchor = limitAnchorFor(matched, switching = old != null, s.startedAt, now)
                 s.nextAlertAt = s.limitAnchor + matched.limitMs
             }
         }
+        // A nova janela pode ter limite maior (ou nenhum): tira o alerta que não vale mais.
+        if (overlay.isShowing && s.nextAlertAt.let { it == null || now < it }) overlay.hide()
         publish()
+        if (old != null) updateNotification(force = true)
+    }
+
+    /**
+     * A partir de quando o limite de [window] é contado nesta sessão:
+     *  - sob demanda: desde que foi ligada (ou desde o desbloqueio, se já estava ligada);
+     *  - troca de janela no meio da sessão (ex.: janela sob demanda desligada): a partir de agora;
+     *  - senão: desde o desbloqueio, se a janela já valia naquele momento.
+     */
+    private fun limitAnchorFor(window: UsageWindow, switching: Boolean, startedAt: Long, now: Long): Long = when {
+        window.onDemand -> maxOf(startedAt, window.activatedAt ?: now)
+        switching -> now
+        window.isActiveAt(startedAt) -> startedAt
+        else -> now
     }
 
     private fun publish() {
@@ -259,8 +286,9 @@ class FocusMonitorService : Service() {
 
     private fun tick() {
         syncWithDevice()
-        val s = session ?: return
         val now = System.currentTimeMillis()
+        checkEstimate(now)
+        val s = session ?: return
 
         refreshWindow(s, now)
 
@@ -276,6 +304,25 @@ class FocusMonitorService : Service() {
             lastHeartbeatWrite = now
         }
         updateNotification(force = false)
+    }
+
+    /**
+     * Quando o tempo desde que a janela sob demanda foi ligada passa da estimativa do usuário,
+     * pergunta (uma vez por estimativa) se ele quer desligá-la. Estender ou desligar remove a pergunta.
+     */
+    private fun checkEstimate(now: Long) {
+        val window = WindowMatcher.onDemand(windows)
+        val end = window?.estimatedEndAt
+        if (window != null && end != null && now >= end) {
+            if (promptedEstimateEnd != end) {
+                promptedEstimateEnd = end
+                Notifications.showEstimateExceeded(this, window)
+                vibrate()
+            }
+        } else if (promptedEstimateEnd != null) {
+            promptedEstimateEnd = null
+            Notifications.cancelEstimateExceeded(this)
+        }
     }
 
     private fun showLimitAlert(s: ActiveSession, window: UsageWindow, now: Long) {
@@ -330,7 +377,7 @@ class FocusMonitorService : Service() {
         ServiceCompat.startForeground(
             this,
             Notifications.MONITOR_ID,
-            Notifications.buildMonitor(this, notificationText()),
+            Notifications.buildMonitor(this, notificationText(), monitorActions()),
             type,
         )
     }
@@ -339,11 +386,22 @@ class FocusMonitorService : Service() {
         val now = System.currentTimeMillis()
         if (!force && now - lastNotificationUpdate < NOTIFICATION_INTERVAL_MS) return
         lastNotificationUpdate = now
-        Notifications.updateMonitor(this, notificationText())
+        Notifications.updateMonitor(this, notificationText(), monitorActions())
+    }
+
+    /** Atalhos para ligar/desligar janelas sob demanda direto da notificação. */
+    private fun monitorActions(): List<NotificationCompat.Action> {
+        WindowMatcher.onDemand(windows)?.let { return listOf(Notifications.deactivateAction(this, it)) }
+        return windows
+            .filter { it.onDemand && it.enabled }
+            .take(MAX_ACTIVATE_ACTIONS)
+            .map { Notifications.activateAction(this, it) }
     }
 
     private fun notificationText(): String {
-        val s = session ?: return "Aguardando o próximo desbloqueio"
+        val s = session ?: return WindowMatcher.onDemand(windows)
+            ?.let { "Aguardando o próximo desbloqueio · ${it.name} ligada" }
+            ?: "Aguardando o próximo desbloqueio"
         val now = System.currentTimeMillis()
         val window = s.window
             ?: return "Em uso há ${TimeFormat.duration(now - s.startedAt)} (fora das janelas)"
@@ -359,6 +417,7 @@ class FocusMonitorService : Service() {
         private const val ACTION_STOP = "com.focusguard.action.STOP"
         private const val HEARTBEAT_INTERVAL_MS = 15_000L
         private const val NOTIFICATION_INTERVAL_MS = 15_000L
+        private const val MAX_ACTIVATE_ACTIONS = 3
 
         fun start(context: Context) {
             ContextCompat.startForegroundService(context, Intent(context, FocusMonitorService::class.java))

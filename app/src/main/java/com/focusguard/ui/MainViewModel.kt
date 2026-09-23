@@ -6,9 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.focusguard.FocusGuardApp
 import com.focusguard.data.UsageSession
 import com.focusguard.data.UsageWindow
-import com.focusguard.data.daysLabel
 import com.focusguard.data.durationMs
-import com.focusguard.data.rangeLabel
+import com.focusguard.data.scheduleLabel
 import com.focusguard.service.FocusMonitorService
 import com.focusguard.service.LiveSessionState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -93,6 +92,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setWindowEnabled(window: UsageWindow, enabled: Boolean) =
         viewModelScope.launch { repository.saveWindow(window.copy(enabled = enabled)) }
 
+    // ------------------------------------------------------------ janelas sob demanda
+
+    /** Janela sob demanda aguardando a estimativa de duração para ser ligada. */
+    private val _pendingActivation = MutableStateFlow<UsageWindow?>(null)
+    val pendingActivation: StateFlow<UsageWindow?> = _pendingActivation
+
+    fun requestActivation(window: UsageWindow) {
+        _pendingActivation.value = window
+    }
+
+    /** Usado pelo botão "Ligar" da notificação, que só conhece o id. */
+    fun requestActivation(windowId: Long) = viewModelScope.launch {
+        repository.windowsOnce().firstOrNull { it.id == windowId && it.onDemand }?.let(::requestActivation)
+    }
+
+    fun cancelActivation() {
+        _pendingActivation.value = null
+    }
+
+    fun activateOnDemand(window: UsageWindow, estimateMinutes: Int) = viewModelScope.launch {
+        _pendingActivation.value = null
+        repository.activateOnDemand(window.id, System.currentTimeMillis(), estimateMinutes)
+    }
+
+    fun deactivateOnDemand(window: UsageWindow) = viewModelScope.launch { repository.deactivateOnDemand(window.id) }
+
+    fun extendEstimate(window: UsageWindow, minutes: Int) =
+        viewModelScope.launch { repository.extendEstimate(window.id, minutes) }
+
     fun deleteWindow(window: UsageWindow) = viewModelScope.launch { repository.deleteWindow(window) }
 
     fun setMonitoring(enabled: Boolean) {
@@ -122,12 +150,15 @@ internal fun buildDayStats(
         )
 
     windows
-        .filter { (it.enabled && it.includesDay(date.dayOfWeek)) || byWindow.containsKey(it.id) }
+        .filter { w ->
+            val scheduledToday = !w.onDemand && w.enabled && w.includesDay(date.dayOfWeek)
+            scheduledToday || w.isOnDemandActive || byWindow.containsKey(w.id)
+        }
         .forEach { w ->
             stats += stat(
                 key = "w${w.id}",
                 name = w.name,
-                subtitle = "${w.rangeLabel()} · ${w.daysLabel()} · ${w.limitMinutes} min por desbloqueio",
+                subtitle = "${w.scheduleLabel()} · ${w.limitMinutes} min por desbloqueio",
                 list = byWindow[w.id].orEmpty(),
                 limit = w.limitMinutes,
             )

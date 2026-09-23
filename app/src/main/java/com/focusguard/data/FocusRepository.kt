@@ -10,6 +10,10 @@ class FocusRepository(
     suspend fun windowsOnce(): List<UsageWindow> = windowDao.getAll()
     suspend fun saveWindow(window: UsageWindow) = windowDao.upsert(window)
     suspend fun deleteWindow(window: UsageWindow) = windowDao.delete(window)
+    suspend fun activateOnDemand(windowId: Long, at: Long, estimateMinutes: Int) =
+        windowDao.activateOnDemand(windowId, at, estimateMinutes)
+    suspend fun deactivateOnDemand(windowId: Long) = windowDao.deactivateOnDemand(windowId)
+    suspend fun extendEstimate(windowId: Long, minutes: Int) = windowDao.extendEstimate(windowId, minutes)
 
     suspend fun recordSession(session: UsageSession) = sessionDao.insert(session)
     fun observeSessions(from: Long, to: Long): Flow<List<UsageSession>> = sessionDao.observeBetween(from, to)
