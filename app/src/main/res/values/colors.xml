@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand_teal">#0F4C47</color>
+    <color name="brand_amber">#FFB547</color>
+    <color name="overlay_scrim">#EB0B1F1D</color>
+    <color name="overlay_card">#16302D</color>
+    <color name="overlay_text_secondary">#C9D8D5</color>
+</resources>

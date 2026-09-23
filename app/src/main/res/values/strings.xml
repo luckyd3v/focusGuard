@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FocusGuard</string>
+    <string name="overlay_title">Tempo esgotado</string>
+    <string name="overlay_message">Você passou do limite de %1$d min por desbloqueio na janela \"%2$s\".</string>
+    <string name="overlay_elapsed_label">Tempo neste desbloqueio</string>
+    <string name="overlay_stop">Parar e ir para a tela inicial</string>
+    <string name="overlay_snooze">Continuar por mais %1$d min</string>
+</resources>
