@@ -69,8 +69,8 @@ class MainActivity : ComponentActivity() {
 private data class Tab(val label: String, val icon: @Composable () -> ImageVector)
 
 private const val TAB_USO = 0
-private const val TAB_ESTATISTICAS = 1
-private const val TAB_JANELAS = 2
+private const val TAB_JANELAS = 1
+private const val TAB_ESTATISTICAS = 2
 private const val TAB_CONFIGURAR = 3
 
 private val tabs = listOf(
@@ -108,8 +108,8 @@ private fun FocusGuardRoot(initialTab: Int, vm: MainViewModel) {
         Box(Modifier.fillMaxSize().padding(padding)) {
             when (selected) {
                 TAB_USO -> DashboardScreen(vm)
-                TAB_ESTATISTICAS -> StatsScreen(vm)
                 TAB_JANELAS -> WindowsScreen(vm)
+                TAB_ESTATISTICAS -> StatsScreen(vm)
                 else -> SetupScreen(vm)
             }
         }
