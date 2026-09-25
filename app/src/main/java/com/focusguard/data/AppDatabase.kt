@@ -7,12 +7,31 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [UsageWindow::class, UsageSession::class], version = 5, exportSchema = false)
+@Database(entities = [UsageWindow::class, UsageSession::class, Task::class, TaskOccurrence::class], version = 6, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun windowDao(): UsageWindowDao
     abstract fun sessionDao(): UsageSessionDao
+    abstract fun taskDao(): TaskDao
 
     companion object {
+        /** v6: afazeres cotidianos e pontuais. */
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `tasks` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`title` TEXT NOT NULL, `kind` INTEGER NOT NULL, `windowId` INTEGER, `createdAt` INTEGER NOT NULL)"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `task_occurrences` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`taskId` INTEGER, `title` TEXT NOT NULL, `kind` INTEGER NOT NULL, `windowId` INTEGER, " +
+                        "`day` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `completedAt` INTEGER)"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_task_occurrences_taskId_day` ON `task_occurrences` (`taskId`, `day`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_task_occurrences_day` ON `task_occurrences` (`day`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_task_occurrences_completedAt` ON `task_occurrences` (`completedAt`)")
+            }
+        }
+
         /** v5: sessões divididas por troca de janela. */
         private val MIGRATION_4_5 = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -53,7 +72,7 @@ abstract class AppDatabase : RoomDatabase() {
                         )
                     }
                 })
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                 .build()
     }
 }

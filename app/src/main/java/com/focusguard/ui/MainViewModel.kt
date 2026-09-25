@@ -4,6 +4,9 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.focusguard.FocusGuardApp
+import com.focusguard.data.Task
+import com.focusguard.data.TaskKind
+import com.focusguard.data.TaskOccurrence
 import com.focusguard.data.UsageSession
 import com.focusguard.data.UsageWindow
 import com.focusguard.data.durationMs
@@ -11,11 +14,15 @@ import com.focusguard.data.scheduleLabel
 import com.focusguard.service.FocusMonitorService
 import com.focusguard.service.LiveSessionState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -126,6 +133,59 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repository.extendEstimate(window.id, minutes) }
 
     fun deleteWindow(window: UsageWindow) = viewModelScope.launch { repository.deleteWindow(window) }
+
+    // ------------------------------------------------------------ afazeres
+
+    /** Dia corrente; conferido a cada minuto para virar à meia-noite com o app aberto. */
+    private val today: StateFlow<LocalDate> = flow {
+        while (true) {
+            emit(LocalDate.now())
+            delay(60_000)
+        }
+    }.distinctUntilChanged().stateIn(viewModelScope, SharingStarted.Eagerly, LocalDate.now())
+
+    val dailyTasks: StateFlow<List<Task>> = repository.observeTasks(TaskKind.DAILY)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val oneOffTasks: StateFlow<List<Task>> = repository.observeTasks(TaskKind.ONE_OFF)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Ocorrências de hoje dos cotidianos (criadas na virada do dia, se ainda não existirem). */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val todayDaily: StateFlow<List<TaskOccurrence>> = today
+        .onEach { repository.ensureDailyOccurrences(it) }
+        .flatMapLatest { repository.observeDailyOccurrences(it) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Pontuais em aberto e os concluídos hoje. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val oneOffOccurrences: StateFlow<List<TaskOccurrence>> = today
+        .flatMapLatest { repository.observeOneOffOccurrences(startOfDay(it)) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Histórico de afazeres do dia escolhido na tela Estatísticas. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val dayTasks: StateFlow<List<TaskOccurrence>> = _selectedDate
+        .flatMapLatest { date -> repository.observeTaskHistory(date, startOfDay(date), startOfDay(date.plusDays(1))) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun createTask(title: String, kind: Int, windowId: Long?, addNow: Boolean) = viewModelScope.launch {
+        val task = Task(title = title, kind = kind, windowId = windowId.takeIf { kind == TaskKind.DAILY })
+        repository.createTask(task, today.value, addNow = kind == TaskKind.ONE_OFF && addNow)
+    }
+
+    fun updateTask(task: Task) = viewModelScope.launch { repository.updateTask(task, today.value) }
+
+    fun deleteTask(task: Task) = viewModelScope.launch { repository.deleteTask(task, today.value) }
+
+    fun addOneOff(task: Task) = viewModelScope.launch { repository.addOneOff(task, today.value) }
+
+    fun setDone(occurrence: TaskOccurrence, done: Boolean) =
+        viewModelScope.launch { repository.setOccurrenceDone(occurrence, done) }
+
+    fun deleteOccurrence(occurrence: TaskOccurrence) = viewModelScope.launch { repository.deleteOccurrence(occurrence) }
+
+    private fun startOfDay(date: LocalDate): Long = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
 
     fun setMonitoring(enabled: Boolean) {
         app.settings.monitoringEnabled = enabled

@@ -106,7 +106,7 @@ object Notifications {
         actions: List<NotificationCompat.Action> = emptyList(),
     ): Notification =
         NotificationCompat.Builder(context, CHANNEL_MONITOR)
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(R.drawable.ic_logo)
             .setContentTitle("FocusGuard ativo")
             .setContentText(text)
             .setOngoing(true)
@@ -128,7 +128,7 @@ object Notifications {
     @SuppressLint("MissingPermission")
     fun showEstimateExceeded(context: Context, window: UsageWindow) {
         val notification = NotificationCompat.Builder(context, CHANNEL_ALERTS)
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(R.drawable.ic_logo)
             .setContentTitle("${window.name}: tempo estimado esgotado")
             .setContentText("Você estimou ${window.estimateMinutes} min. Quer desligar a janela sob demanda?")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -147,7 +147,7 @@ object Notifications {
     @SuppressLint("MissingPermission")
     fun showLimitExceeded(context: Context, windowName: String, limitMinutes: Int) {
         val notification = NotificationCompat.Builder(context, CHANNEL_ALERTS)
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(R.drawable.ic_logo)
             .setContentTitle("Tempo esgotado")
             .setContentText("Você passou de $limitMinutes min neste desbloqueio ($windowName).")
             .setPriority(NotificationCompat.PRIORITY_HIGH)

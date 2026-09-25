@@ -14,6 +14,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -108,8 +109,14 @@ fun OnDemandCard(
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
         Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 16.dp, bottom = 12.dp)) {
             Text("Janelas sob demanda", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            windows.forEach { window ->
-                Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(4.dp))
+            windows.forEachIndexed { index, window ->
+                if (index > 0) {
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                        modifier = Modifier.padding(end = 8.dp),
+                    )
+                }
                 OnDemandRow(window, now, onActivate, onDeactivate, onExtend)
             }
         }
@@ -128,18 +135,19 @@ private fun OnDemandRow(
     val end = window.estimatedEndAt
     val exceeded = end != null && now >= end
 
-    Column {
+    // O interruptor já mostra se a janela está ligada; o texto traz só o que é útil.
+    Column(Modifier.padding(vertical = 14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
+            Column(Modifier.weight(1f).padding(end = 12.dp)) {
                 Text(window.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                Spacer(Modifier.height(2.dp))
                 Text(
                     when {
-                        !active -> "Desligada · ${window.limitMinutes} min por desbloqueio" +
+                        !active -> "${window.limitMinutes} min por desbloqueio" +
                             window.fixedEstimateMinutes?.let { " · estimativa de ${TimeFormat.duration(it * 60_000L)}" }.orEmpty()
-                        end == null -> "Ligada desde ${TimeFormat.timeOfDay(window.activatedAt!!)}"
+                        end == null -> "Desde ${TimeFormat.timeOfDay(window.activatedAt!!)}"
                         exceeded -> "Tempo estimado esgotado às ${TimeFormat.timeOfDay(end)}"
-                        else -> "Ligada · estimativa até ${TimeFormat.timeOfDay(end)} " +
-                            "(faltam ${TimeFormat.duration(end - now)})"
+                        else -> "Estimativa até ${TimeFormat.timeOfDay(end)} (faltam ${TimeFormat.duration(end - now)})"
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = if (exceeded) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,

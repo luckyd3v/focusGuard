@@ -220,9 +220,10 @@ private fun WindowEditorDialog(
             ) {
                 OutlinedTextField(
                     value = name,
-                    onValueChange = { name = it.take(40) },
+                    onValueChange = { name = it.limitChars(MAX_NAME_LENGTH) },
                     label = { Text("Nome") },
                     placeholder = { Text("Expediente") },
+                    supportingText = { Text("${name.charCount()}/$MAX_NAME_LENGTH") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -328,6 +329,8 @@ private fun WindowEditorDialog(
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
     )
 }
+
+private const val MAX_NAME_LENGTH = 30
 
 @Composable
 private fun HintText(text: String) {

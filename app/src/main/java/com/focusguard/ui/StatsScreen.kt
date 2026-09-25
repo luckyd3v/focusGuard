@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -32,6 +33,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.focusguard.data.TaskKind
+import com.focusguard.data.TaskOccurrence
 import com.focusguard.util.TimeFormat
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -45,6 +48,7 @@ private val dateFormatter = DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM", ptB
 fun StatsScreen(vm: MainViewModel) {
     val stats by vm.dayStats.collectAsStateWithLifecycle()
     val date by vm.selectedDate.collectAsStateWithLifecycle()
+    val tasks by vm.dayTasks.collectAsStateWithLifecycle()
     val today = LocalDate.now()
 
     LazyColumn(
@@ -65,6 +69,10 @@ fun StatsScreen(vm: MainViewModel) {
         }
 
         item { DaySummary(stats) }
+
+        if (tasks.isNotEmpty()) {
+            item { TasksHistoryCard(tasks) }
+        }
 
         if (stats.perWindow.isEmpty()) {
             item {
@@ -166,6 +174,43 @@ private fun WindowStatCard(stat: WindowStat) {
                     if (stat.unlocks > 0) TimeFormat.duration(stat.totalMs / stat.unlocks) else "—",
                     Modifier.weight(1f),
                 )
+            }
+        }
+    }
+}
+
+/** Afazeres do dia: cotidianos concluídos do total e pontuais concluídos no dia. */
+@Composable
+private fun TasksHistoryCard(tasks: List<TaskOccurrence>) {
+    val daily = tasks.filter { it.kind == TaskKind.DAILY }
+    val oneOff = tasks.filter { it.kind == TaskKind.ONE_OFF }
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+        Column(Modifier.fillMaxWidth().padding(20.dp)) {
+            Text("Afazeres", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(12.dp))
+            Row {
+                Metric("Cotidianos concluídos", "${daily.count { it.done }} de ${daily.size}", Modifier.weight(1f))
+                Metric("Pontuais concluídos", oneOff.size.toString(), Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(8.dp))
+            (daily.sortedBy { !it.done } + oneOff).forEach { occurrence ->
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+                    Text(
+                        if (occurrence.done) "✓" else "○",
+                        color = if (occurrence.done) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.width(24.dp),
+                    )
+                    Text(
+                        occurrence.title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (occurrence.done) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (occurrence.kind == TaskKind.ONE_OFF) {
+                        Text("pontual", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
             }
         }
     }

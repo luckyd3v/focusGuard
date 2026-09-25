@@ -36,6 +36,11 @@ android {
     }
 }
 
+ksp {
+    // Room gera o código dos DAOs em Kotlin (em vez de Java), como recomendado para projetos Kotlin.
+    arg("room.generateKotlin", "true")
+}
+
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2024.09.03")
     implementation(composeBom)

@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -70,12 +71,14 @@ private data class Tab(val label: String, val icon: @Composable () -> ImageVecto
 
 private const val TAB_USO = 0
 private const val TAB_JANELAS = 1
-private const val TAB_ESTATISTICAS = 2
-private const val TAB_CONFIGURAR = 3
+private const val TAB_AFAZERES = 2
+private const val TAB_ESTATISTICAS = 3
+private const val TAB_CONFIGURAR = 4
 
 private val tabs = listOf(
     Tab("Uso") { Icons.Filled.Home },
     Tab("Janelas") { Icons.Filled.DateRange },
+    Tab("Afazeres") { ImageVector.vectorResource(R.drawable.ic_task) },
     Tab("Estatísticas") { ImageVector.vectorResource(R.drawable.ic_bar_chart) },
     Tab("Configurar") { Icons.Filled.Settings },
 )
@@ -99,7 +102,8 @@ private fun FocusGuardRoot(initialTab: Int, vm: MainViewModel) {
                         selected = selected == index,
                         onClick = { selected = index },
                         icon = { Icon(tab.icon(), contentDescription = null) },
-                        label = { Text(tab.label) },
+                        // Com 5 abas, "Estatísticas" quebraria em duas linhas no tamanho padrão.
+                        label = { Text(tab.label, style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false) },
                     )
                 }
             }
@@ -109,6 +113,7 @@ private fun FocusGuardRoot(initialTab: Int, vm: MainViewModel) {
             when (selected) {
                 TAB_USO -> DashboardScreen(vm)
                 TAB_JANELAS -> WindowsScreen(vm)
+                TAB_AFAZERES -> TasksScreen(vm)
                 TAB_ESTATISTICAS -> StatsScreen(vm)
                 else -> SetupScreen(vm)
             }

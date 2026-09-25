@@ -25,7 +25,7 @@ class FocusGuardApp : Application() {
     override fun onCreate() {
         super.onCreate()
         val db = AppDatabase.build(this)
-        repository = FocusRepository(db.windowDao(), db.sessionDao())
+        repository = FocusRepository(db.windowDao(), db.sessionDao(), db.taskDao())
         settings = SettingsStore(this)
         Notifications.createChannels(this)
 

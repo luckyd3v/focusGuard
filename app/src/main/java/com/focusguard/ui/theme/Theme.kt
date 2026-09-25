@@ -21,6 +21,7 @@ private val Light = lightColorScheme(
     surface = Color(0xFFF6F8F7),
     surfaceContainer = Color(0xFFE9EFED),
     surfaceContainerHigh = Color(0xFFE2E9E7),
+    surfaceContainerLowest = Color.White,
 )
 
 private val Dark = darkColorScheme(
@@ -36,6 +37,7 @@ private val Dark = darkColorScheme(
     surface = Color(0xFF0E1514),
     surfaceContainer = Color(0xFF18211F),
     surfaceContainerHigh = Color(0xFF1F2A28),
+    surfaceContainerLowest = Color(0xFF141C1B),
 )
 
 @Composable

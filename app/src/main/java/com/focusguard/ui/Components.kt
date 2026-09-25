@@ -64,3 +64,10 @@ fun Metric(label: String, value: String, modifier: Modifier = Modifier) {
         )
     }
 }
+
+/** Conta caracteres "visíveis": um emoji como 💪 vale 1, não os 2 chars UTF-16 que ocupa. */
+internal fun String.charCount(): Int = codePointCount(0, length)
+
+/** Corta em [max] caracteres sem partir um emoji ao meio. */
+internal fun String.limitChars(max: Int): String =
+    if (charCount() <= max) this else substring(0, offsetByCodePoints(0, max))
