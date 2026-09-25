@@ -26,6 +26,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -43,6 +44,19 @@ import com.focusguard.util.Permissions
 fun SetupScreen(vm: MainViewModel) {
     val context = LocalContext.current
     val monitoring by vm.monitoringEnabled.collectAsStateWithLifecycle()
+    var confirmingOff by remember { mutableStateOf(false) }
+    if (confirmingOff) {
+        ConfirmCodeDialog(
+            title = "Desligar o monitoramento?",
+            message = "Sem o monitoramento, nenhum limite é aplicado. Para desligar, digite o código abaixo.",
+            confirmLabel = "Desligar",
+            onConfirm = {
+                vm.setMonitoring(false)
+                confirmingOff = false
+            },
+            onDismiss = { confirmingOff = false },
+        )
+    }
     val running by vm.serviceRunning.collectAsStateWithLifecycle()
 
     // Reavalia as permissões sempre que o usuário volta das telas de configuração do sistema.
@@ -90,7 +104,8 @@ fun SetupScreen(vm: MainViewModel) {
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
-                Switch(checked = monitoring, onCheckedChange = { vm.setMonitoring(it) })
+                // Ligar é livre; desligar exige o código de confirmação.
+                Switch(checked = monitoring, onCheckedChange = { if (it) vm.setMonitoring(true) else confirmingOff = true })
             }
         }
 

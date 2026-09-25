@@ -50,6 +50,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.focusguard.data.UsageWindow
+import com.focusguard.data.WindowMatcher
 import com.focusguard.data.daysLabel
 import com.focusguard.data.rangeLabel
 import com.focusguard.util.TimeFormat
@@ -60,6 +61,10 @@ fun WindowsScreen(vm: MainViewModel) {
     val windows by vm.windows.collectAsStateWithLifecycle()
     var editing by remember { mutableStateOf<UsageWindow?>(null) }
     var deleting by remember { mutableStateOf<UsageWindow?>(null) }
+    // Janelas por horário só são desativadas/excluídas digitando um código de confirmação.
+    var confirmingDisable by remember { mutableStateOf<UsageWindow?>(null) }
+    var confirmingDelete by remember { mutableStateOf<UsageWindow?>(null) }
+    var confirmingEdit by remember { mutableStateOf<UsageWindow?>(null) }
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
@@ -89,13 +94,14 @@ fun WindowsScreen(vm: MainViewModel) {
                     window = window,
                     onToggle = {
                         when {
-                            !window.onDemand -> vm.setWindowEnabled(window, it)
+                            !window.onDemand && it -> vm.setWindowEnabled(window, true)
+                            !window.onDemand -> confirmingDisable = window
                             it -> vm.requestActivation(window) // pede a estimativa antes de ligar
                             else -> vm.deactivateOnDemand(window)
                         }
                     },
                     onEdit = { editing = window },
-                    onDelete = { deleting = window },
+                    onDelete = { if (window.onDemand) deleting = window else confirmingDelete = window },
                 )
             }
         }
@@ -114,10 +120,50 @@ fun WindowsScreen(vm: MainViewModel) {
         WindowEditorDialog(
             initial = window,
             onDismiss = { editing = null },
-            onSave = {
-                vm.saveWindow(it)
+            onSave = { edited ->
+                if (WindowMatcher.editLoosens(window, edited)) confirmingEdit = edited else vm.saveWindow(edited)
                 editing = null
             },
+        )
+    }
+
+    confirmingDisable?.let { window ->
+        ConfirmCodeDialog(
+            title = "Desativar \"${window.name}\"?",
+            message = "Para desativar esta janela, digite o código abaixo.",
+            confirmLabel = "Desativar",
+            onConfirm = {
+                vm.setWindowEnabled(window, false)
+                confirmingDisable = null
+            },
+            onDismiss = { confirmingDisable = null },
+        )
+    }
+
+    confirmingEdit?.let { window ->
+        ConfirmCodeDialog(
+            title = "Salvar \"${window.name}\"?",
+            message = "Mudar horário ou dias, tornar a janela sob demanda ou aumentar o limite afrouxa o controle. " +
+                "Para salvar, digite o código abaixo.",
+            confirmLabel = "Salvar",
+            onConfirm = {
+                vm.saveWindow(window)
+                confirmingEdit = null
+            },
+            onDismiss = { confirmingEdit = null },
+        )
+    }
+
+    confirmingDelete?.let { window ->
+        ConfirmCodeDialog(
+            title = "Excluir \"${window.name}\"?",
+            message = "Para excluir esta janela, digite o código abaixo. O histórico de uso já registrado continua disponível.",
+            confirmLabel = "Excluir",
+            onConfirm = {
+                vm.deleteWindow(window)
+                confirmingDelete = null
+            },
+            onDismiss = { confirmingDelete = null },
         )
     }
 

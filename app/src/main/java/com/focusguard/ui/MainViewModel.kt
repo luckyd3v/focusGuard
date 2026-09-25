@@ -9,6 +9,7 @@ import com.focusguard.data.TaskKind
 import com.focusguard.data.TaskOccurrence
 import com.focusguard.data.UsageSession
 import com.focusguard.data.UsageWindow
+import com.focusguard.data.WindowMatcher
 import com.focusguard.data.durationMs
 import com.focusguard.data.scheduleLabel
 import com.focusguard.service.FocusMonitorService
@@ -106,7 +107,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val pendingActivation: StateFlow<UsageWindow?> = _pendingActivation
 
     /** Com estimativa fixa liga direto; senão abre o diálogo pedindo a estimativa. */
-    fun requestActivation(window: UsageWindow) {
+    /** Janela sob demanda aguardando o código de confirmação (ligá-la afrouxaria o limite atual). */
+    private val _pendingUnlock = MutableStateFlow<UsageWindow?>(null)
+    val pendingUnlock: StateFlow<UsageWindow?> = _pendingUnlock
+
+    /**
+     * Ligar uma janela sob demanda: se ela afrouxa o limite em vigor, pede o código antes; depois,
+     * com estimativa fixa liga direto, senão abre o diálogo pedindo a estimativa.
+     */
+    fun requestActivation(window: UsageWindow) = viewModelScope.launch {
+        val loosens = WindowMatcher.activationLoosens(window, repository.windowsOnce(), System.currentTimeMillis())
+        if (loosens) _pendingUnlock.value = window else proceedActivation(window)
+    }
+
+    fun confirmUnlock() {
+        val window = _pendingUnlock.value ?: return
+        _pendingUnlock.value = null
+        proceedActivation(window)
+    }
+
+    fun cancelUnlock() {
+        _pendingUnlock.value = null
+    }
+
+    private fun proceedActivation(window: UsageWindow) {
         val fixed = window.fixedEstimateMinutes
         if (fixed != null) activateOnDemand(window, fixed) else _pendingActivation.value = window
     }

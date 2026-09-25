@@ -463,7 +463,10 @@ class FocusMonitorService : Service() {
         return windows
             .filter { it.onDemand && it.enabled }
             .take(MAX_ACTIVATE_ACTIONS)
-            .map { Notifications.activateAction(this, it) }
+            .map { w ->
+                val loosens = WindowMatcher.activationLoosens(w, windows, System.currentTimeMillis())
+                Notifications.activateAction(this, w, needsConfirmation = loosens)
+            }
     }
 
     private fun notificationText(): String {

@@ -87,6 +87,17 @@ private val tabs = listOf(
 private fun FocusGuardRoot(initialTab: Int, vm: MainViewModel) {
     var selected by rememberSaveable { mutableIntStateOf(initialTab) }
     val pendingActivation by vm.pendingActivation.collectAsStateWithLifecycle()
+    val pendingUnlock by vm.pendingUnlock.collectAsStateWithLifecycle()
+    pendingUnlock?.let { window ->
+        ConfirmCodeDialog(
+            title = "Ligar ${window.name}?",
+            message = "Esta janela tem limite maior (${window.limitMinutes} min) que o que vale agora e o substituiria. " +
+                "Para ligar, digite o código abaixo.",
+            confirmLabel = "Continuar",
+            onConfirm = vm::confirmUnlock,
+            onDismiss = vm::cancelUnlock,
+        )
+    }
     pendingActivation?.let { window ->
         EstimateDialog(
             window = window,

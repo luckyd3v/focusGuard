@@ -3,7 +3,11 @@ package com.focusguard.receiver
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.widget.Toast
 import com.focusguard.app
+import com.focusguard.data.WindowMatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 
 /**
@@ -19,11 +23,19 @@ class OnDemandActionReceiver : BroadcastReceiver() {
         context.app.appScope.launch {
             try {
                 when (intent.action) {
-                    ACTION_ACTIVATE -> repository.activateOnDemand(
-                        windowId,
-                        System.currentTimeMillis(),
-                        intent.getIntExtra(EXTRA_MINUTES, 60),
-                    )
+                    ACTION_ACTIVATE -> {
+                        // O botão pode ter sido criado antes de a situação mudar: confere de novo.
+                        val windows = repository.windowsOnce()
+                        val target = windows.firstOrNull { it.id == windowId }
+                        val now = System.currentTimeMillis()
+                        if (target != null && WindowMatcher.activationLoosens(target, windows, now)) {
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(context, "Abra o FocusGuard para confirmar com o código.", Toast.LENGTH_LONG).show()
+                            }
+                        } else {
+                            repository.activateOnDemand(windowId, now, intent.getIntExtra(EXTRA_MINUTES, 60))
+                        }
+                    }
                     ACTION_DEACTIVATE -> repository.deactivateOnDemand(windowId)
                     ACTION_EXTEND -> repository.extendEstimate(windowId, intent.getIntExtra(EXTRA_MINUTES, 15))
                 }

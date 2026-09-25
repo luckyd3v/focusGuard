@@ -118,6 +118,34 @@ class UsageWindowTest {
     }
 
     @Test
+    fun `ligar sob demanda so exige codigo quando afrouxa o limite em vigor`() {
+        val dez = millis(at(22, 10)) // Expediente (10 min) em vigor
+        val noite = millis(at(22, 22)) // nenhuma janela em vigor
+        val folga = UsageWindow(id = 7, name = "Folga", startMinuteOfDay = 0, endMinuteOfDay = 0, limitMinutes = 30, onDemand = true)
+        val foco = folga.copy(id = 8, name = "Foco", limitMinutes = 5)
+
+        assertTrue(WindowMatcher.activationLoosens(folga, listOf(expediente, folga), dez))
+        assertFalse(WindowMatcher.activationLoosens(foco, listOf(expediente, foco), dez))
+        assertFalse(WindowMatcher.activationLoosens(folga, listOf(expediente, folga), noite))
+        // Com "Foco" (5 min) ligada, trocar para "Folga" (30 min) também afrouxa.
+        val focoLigada = foco.copy(activatedAt = dez)
+        assertTrue(WindowMatcher.activationLoosens(folga, listOf(expediente, focoLigada, folga), dez))
+    }
+
+    @Test
+    fun `editar janela por horario ativa so exige codigo quando afrouxa`() {
+        assertFalse(WindowMatcher.editLoosens(expediente, expediente.copy(name = "Trabalho")))
+        assertFalse(WindowMatcher.editLoosens(expediente, expediente.copy(limitMinutes = 5)))
+        assertTrue(WindowMatcher.editLoosens(expediente, expediente.copy(limitMinutes = 15)))
+        assertTrue(WindowMatcher.editLoosens(expediente, expediente.copy(endMinuteOfDay = 18 * 60)))
+        assertTrue(WindowMatcher.editLoosens(expediente, expediente.copy(daysMask = UsageWindow.WEEKEND)))
+        assertTrue(WindowMatcher.editLoosens(expediente, expediente.copy(onDemand = true)))
+        // Janela nova ou já desativada: nada a proteger.
+        assertFalse(WindowMatcher.editLoosens(expediente.copy(id = 0), expediente.copy(id = 0, limitMinutes = 60)))
+        assertFalse(WindowMatcher.editLoosens(expediente.copy(enabled = false), expediente.copy(enabled = false, limitMinutes = 60)))
+    }
+
+    @Test
     fun `estatisticas somam tempo e desbloqueios por janela`() {
         fun session(startH: Int, minutes: Int, windowId: Long?) = UsageSession(
             windowId = windowId, windowName = if (windowId == null) null else "Expediente",

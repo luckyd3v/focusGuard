@@ -50,8 +50,9 @@ object Notifications {
     /**
      * Com estimativa fixa, liga a janela direto. Sem ela, abre o app já pedindo a estimativa.
      */
-    fun activateAction(context: Context, window: UsageWindow): NotificationCompat.Action {
-        window.fixedEstimateMinutes?.let { minutes ->
+    fun activateAction(context: Context, window: UsageWindow, needsConfirmation: Boolean): NotificationCompat.Action {
+        // Se ligar afrouxa o limite, o código precisa ser digitado no app: sempre abre a tela.
+        if (!needsConfirmation) window.fixedEstimateMinutes?.let { minutes ->
             val pending = receiverIntent(context, window, OnDemandActionReceiver.ACTION_ACTIVATE, 4, minutes)
             return NotificationCompat.Action(0, "Ligar ${window.name}", pending)
         }
