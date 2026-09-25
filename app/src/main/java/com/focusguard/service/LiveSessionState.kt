@@ -26,8 +26,8 @@ object LiveSessionState {
 object FocusConfig {
     /** Ao escolher "continuar", o alerta volta depois deste tempo. */
     const val SNOOZE_MINUTES = 5
-    /** Ao escolher "parar", se o usuário continuar usando, o alerta volta depois deste tempo. */
-    const val REALERT_AFTER_STOP_MS = 60_000L
+    /** Ao escolher "Ignorar", se o usuário continuar usando, o alerta volta depois deste tempo. */
+    const val REALERT_AFTER_IGNORE_MS = 60_000L
     /** Sessões menores que isso (ex.: tela acesa sem uso real) são descartadas. */
     const val MIN_SESSION_MS = 2_000L
 }

@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
+import android.content.res.Configuration
 import android.media.AudioAttributes
 import android.os.Build
 import android.os.IBinder
@@ -85,6 +86,11 @@ class FocusMonitorService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        overlay.onConfigurationChanged()
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -375,10 +381,10 @@ class FocusMonitorService : Service() {
             limitMinutes = window.limitMinutes,
             elapsedMs = now - s.startedAt,
             snoozeMinutes = FocusConfig.SNOOZE_MINUTES,
-            onStop = {
+            onIgnore = {
+                // Fecha o alerta e mantém o usuário onde está; se o uso continuar, volta em 1 min.
                 overlay.hide()
-                s.nextAlertAt = System.currentTimeMillis() + FocusConfig.REALERT_AFTER_STOP_MS
-                goHome()
+                s.nextAlertAt = System.currentTimeMillis() + FocusConfig.REALERT_AFTER_IGNORE_MS
             },
             onSnooze = {
                 overlay.hide()
@@ -393,12 +399,6 @@ class FocusMonitorService : Service() {
         vibrateLimitAlert()
     }
 
-    private fun goHome() {
-        val home = Intent(Intent.ACTION_MAIN)
-            .addCategory(Intent.CATEGORY_HOME)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        runCatching { startActivity(home) }
-    }
 
     private fun vibrator(): Vibrator? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         getSystemService(VibratorManager::class.java)?.defaultVibrator

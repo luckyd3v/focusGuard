@@ -42,8 +42,9 @@ Regras de negócio:
   período, substituem as janelas por horário. Só uma fica ligada por vez. Ao ligar, o app pede a
   duração estimada (ou usa a estimativa fixa configurada) e, quando ela passa, pergunta se o
   usuário quer desligar a janela.
-- Ao estourar o limite, o overlay oferece **"Parar e ir para a tela inicial"** (se o uso continuar,
-  o alerta volta em 1 min) ou **"Continuar por mais 5 min"**. Valores em `FocusConfig`.
+- Ao estourar o limite, o overlay vibra em 3 tempos, pausa mídias em reprodução (como numa ligação)
+  e oferece **"Continuar por mais 5 min"** ou **"Ignorar"** (o alerta volta em 1 min se o uso
+  continuar). Valores em `FocusConfig`.
 - Sem permissão de overlay, o alerta vira uma notificação de alta prioridade.
 - Se o sistema matar o processo no meio de uma sessão, ela é recuperada pelo último "heartbeat"
   (gravado a cada 15 s).
@@ -55,6 +56,6 @@ Regras de negócio:
   serviço precisa ficar vivo (notificação fixa). Fabricantes como Xiaomi, Samsung e Huawei podem
   exigir, além da liberação de bateria, ativar "Início automático" nas configurações do sistema.
 - O app não bloqueia o aparelho à força: isso exigiria torná-lo administrador do dispositivo.
-  O overlay cobre a tela e leva o usuário à tela inicial.
+  O overlay cobre a tela até o usuário escolher uma das opções.
 - Publicar na Play Store com `FOREGROUND_SERVICE_SPECIAL_USE` e `SYSTEM_ALERT_WINDOW` exige
   justificar o uso na declaração de permissões do Play Console.
