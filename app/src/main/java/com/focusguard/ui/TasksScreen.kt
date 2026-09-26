@@ -1,5 +1,7 @@
 package com.focusguard.ui
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,15 +47,20 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.focusguard.R
+import com.focusguard.data.Tag
 import com.focusguard.data.Task
 import com.focusguard.data.TaskKind
 import com.focusguard.data.TaskOccurrence
 import com.focusguard.data.UsageWindow
+import com.focusguard.util.TimeFormat
 
 private const val MAX_TASK_TITLE = 60
 
@@ -72,26 +79,33 @@ fun TasksScreen(vm: MainViewModel) {
         Box(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp)) {
             ScreenTitle(
                 "Afazeres",
-                if (tab == 0) "Repetem todo dia. Associe a uma janela para vê-los na aba Uso enquanto ela vale."
-                else "Cadastre uma vez e adicione à lista sempre que precisar.",
+                when (tab) {
+                    0 -> "Repetem todo dia. Associe a uma janela para vê-los na aba Uso enquanto ela vale."
+                    1 -> "Cadastre uma vez e adicione à lista sempre que precisar."
+                    else -> "Links compartilhados com o FocusGuard. Organize com tags e filtre por tag ou título."
+                },
             )
         }
         PrimaryTabRow(selectedTabIndex = tab, modifier = Modifier.padding(top = 8.dp)) {
             Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Cotidianos") })
             Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Pontuais") })
+            Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text("Links") })
         }
         Box(Modifier.fillMaxSize()) {
-            if (tab == 0) {
-                DailyTab(vm, windows, onEdit = { editing = it }, onDelete = { deleting = it })
-            } else {
-                OneOffTab(vm, onEdit = { editing = it }, onDelete = { deleting = it })
+            when (tab) {
+                0 -> DailyTab(vm, windows, onEdit = { editing = it }, onDelete = { deleting = it })
+                1 -> OneOffTab(vm, onEdit = { editing = it }, onDelete = { deleting = it })
+                else -> LinksTab(vm)
             }
-            ExtendedFloatingActionButton(
-                onClick = { creating = true },
-                icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                text = { Text("Novo afazer") },
-                modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
-            )
+            // Links chegam pelo "Compartilhar" de outros apps, não por aqui.
+            if (tab != 2) {
+                ExtendedFloatingActionButton(
+                    onClick = { creating = true },
+                    icon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                    text = { Text("Novo afazer") },
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+                )
+            }
         }
     }
 
@@ -190,23 +204,25 @@ private fun OneOffTab(
     onDelete: (Task) -> Unit,
 ) {
     val templates by vm.oneOffTasks.collectAsStateWithLifecycle()
-    val occurrences by vm.oneOffOccurrences.collectAsStateWithLifecycle()
+    val allOccurrences by vm.oneOffOccurrences.collectAsStateWithLifecycle()
+    val occurrences = allOccurrences.filter { it.url == null }
 
     TaskList {
         item { SectionTitle("Para fazer") }
         item {
             if (occurrences.isEmpty()) {
-                EmptyText("Nada na lista. Toque em \"Adicionar\" num modelo abaixo.")
+                EmptyText("Nada na lista. Toque em \"Adicionar\" num modelo abaixo ou compartilhe um link com o FocusGuard.")
             } else {
                 ListCard {
                     occurrences.forEachIndexed { index, occurrence ->
                         if (index > 0) ItemDivider()
                         TaskRow(
                             title = occurrence.title,
-                            subtitle = null,
+                            subtitle = occurrence.linkSubtitle(),
                             done = occurrence.done,
                             onCheck = { vm.setDone(occurrence, it) },
                         ) {
+                            OpenLinkButton(occurrence.url)
                             IconButton(onClick = { vm.deleteOccurrence(occurrence) }) {
                                 Icon(Icons.Filled.Close, contentDescription = "Tirar da lista")
                             }
@@ -391,7 +407,12 @@ private fun TaskEditorDialog(
 
 /** Card da aba Uso com um grupo de tarefas do dia; pendentes primeiro, com separadores. */
 @Composable
-fun TaskGroupCard(title: String, tasks: List<TaskOccurrence>, onCheck: (TaskOccurrence, Boolean) -> Unit) {
+fun TaskGroupCard(
+    title: String,
+    tasks: List<TaskOccurrence>,
+    onCheck: (TaskOccurrence, Boolean) -> Unit,
+    tags: Map<Long, Tag> = emptyMap(),
+) {
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
         Column(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 8.dp)) {
             Text(
@@ -404,9 +425,38 @@ fun TaskGroupCard(title: String, tasks: List<TaskOccurrence>, onCheck: (TaskOccu
             tasks.sortedBy { it.done }.forEachIndexed { index, occurrence ->
                 if (index > 0) ItemDivider()
                 Box(Modifier.padding(horizontal = 8.dp)) {
-                    TaskRow(occurrence.title, subtitle = null, done = occurrence.done, onCheck = { onCheck(occurrence, it) })
+                    TaskRow(
+                        occurrence.title,
+                        subtitle = occurrence.linkSubtitle(),
+                        done = occurrence.done,
+                        onCheck = { onCheck(occurrence, it) },
+                    ) { OpenLinkButton(occurrence.url) }
+                }
+                occurrence.tagId?.let(tags::get)?.let { tag ->
+                    Box(Modifier.padding(start = 60.dp, bottom = 10.dp)) { TagPill(tag) }
                 }
             }
         }
+    }
+}
+
+/** "12 min · youtube.com" para tarefas que vieram de um link ou têm duração estimada. */
+internal fun TaskOccurrence.linkSubtitle(): String? {
+    val parts = listOfNotNull(
+        estimateMinutes?.let { TimeFormat.duration(it * 60_000L) },
+        url?.let { Uri.parse(it).host?.removePrefix("www.") },
+    )
+    return parts.joinToString(" · ").ifEmpty { null }
+}
+
+/** Abre o link da tarefa no app certo (YouTube, navegador...). Some se não houver link. */
+@Composable
+internal fun OpenLinkButton(url: String?) {
+    if (url == null) return
+    val context = LocalContext.current
+    IconButton(onClick = {
+        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+    }) {
+        Icon(painterResource(R.drawable.ic_open_in_new), contentDescription = "Abrir link")
     }
 }

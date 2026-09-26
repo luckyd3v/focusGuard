@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.focusguard.FocusGuardApp
+import com.focusguard.data.Tag
 import com.focusguard.data.Task
 import com.focusguard.data.TaskKind
 import com.focusguard.data.TaskOccurrence
@@ -206,6 +207,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setDone(occurrence: TaskOccurrence, done: Boolean) =
         viewModelScope.launch { repository.setOccurrenceDone(occurrence, done) }
+
+    // ------------------------------------------------------------ links e tags
+
+    val tags: StateFlow<List<Tag>> = repository.observeTags()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Links salvos em aberto e os concluídos hoje. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val links: StateFlow<List<TaskOccurrence>> = today
+        .flatMapLatest { repository.observeLinks(startOfDay(it)) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun createTag(name: String, color: Int) = viewModelScope.launch { repository.createTag(name, color) }
+    fun updateTag(tag: Tag) = viewModelScope.launch { repository.updateTag(tag) }
+    fun deleteTag(tag: Tag) = viewModelScope.launch { repository.deleteTag(tag) }
+    fun setTag(occurrence: TaskOccurrence, tagId: Long?) = viewModelScope.launch { repository.setOccurrenceTag(occurrence, tagId) }
 
     fun deleteOccurrence(occurrence: TaskOccurrence) = viewModelScope.launch { repository.deleteOccurrence(occurrence) }
 

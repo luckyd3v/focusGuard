@@ -65,6 +65,7 @@ fun DashboardScreen(vm: MainViewModel) {
     val onDemand = windows.filter { it.onDemand && it.enabled }
     val todayDaily by vm.todayDaily.collectAsStateWithLifecycle()
     val oneOff by vm.oneOffOccurrences.collectAsStateWithLifecycle()
+    val tags by vm.tags.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableIntStateOf(0) }
 
     // Categorias da aba Tarefas, na ordem de exibição; categorias vazias não aparecem.
@@ -121,7 +122,7 @@ fun DashboardScreen(vm: MainViewModel) {
                 item { TaskGroupCard("Tarefas da janela atual · ${currentLive?.windowName.orEmpty()}", windowTasks, check) }
             }
             if (oneOff.isNotEmpty()) {
-                item { TaskGroupCard("Tarefas pontuais", oneOff, check) }
+                item { TaskGroupCard("Tarefas pontuais", oneOff, check, tags = tags.associateBy { it.id }) }
             }
         } else {
             item {

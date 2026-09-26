@@ -49,6 +49,12 @@ data class TaskOccurrence(
     val day: Long,
     val createdAt: Long = System.currentTimeMillis(),
     val completedAt: Long? = null,
+    /** Link compartilhado com o FocusGuard (vídeo, site...), se a tarefa veio de um. */
+    val url: String? = null,
+    /** Duração estimada da atividade, em minutos. */
+    val estimateMinutes: Int? = null,
+    /** Tag do link (uma por link), ou null. */
+    val tagId: Long? = null,
 ) {
     val done: Boolean get() = completedAt != null
 }
@@ -77,6 +83,13 @@ interface TaskDao {
 
     @Query("SELECT * FROM task_occurrences WHERE kind = 0 AND day = :day")
     fun observeDailyOccurrences(day: Long): Flow<List<TaskOccurrence>>
+
+    /** Links salvos: em aberto e os concluídos a partir de [doneSince]. */
+    @Query(
+        "SELECT * FROM task_occurrences WHERE url IS NOT NULL AND (completedAt IS NULL OR completedAt >= :doneSince) " +
+            "ORDER BY completedAt IS NOT NULL, createdAt DESC"
+    )
+    fun observeLinks(doneSince: Long): Flow<List<TaskOccurrence>>
 
     /** Pontuais em aberto (de qualquer dia) e os concluídos a partir de [doneSince]. */
     @Query(

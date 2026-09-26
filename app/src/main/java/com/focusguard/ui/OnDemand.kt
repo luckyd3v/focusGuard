@@ -38,7 +38,7 @@ import com.focusguard.service.Notifications
 import com.focusguard.util.TimeFormat
 import kotlinx.coroutines.delay
 
-private val estimatePresets = listOf(15, 30, 60, 90, 120)
+internal val estimatePresets = listOf(15, 30, 60, 90, 120)
 private const val DEFAULT_ESTIMATE_MINUTES = 60
 
 /** Pergunta por quanto tempo o usuário pretende manter a janela sob demanda ligada. */

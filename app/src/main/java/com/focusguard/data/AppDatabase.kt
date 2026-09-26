@@ -7,13 +7,33 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [UsageWindow::class, UsageSession::class, Task::class, TaskOccurrence::class], version = 6, exportSchema = false)
+@Database(entities = [UsageWindow::class, UsageSession::class, Task::class, TaskOccurrence::class, Tag::class], version = 8, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun windowDao(): UsageWindowDao
     abstract fun sessionDao(): UsageSessionDao
     abstract fun taskDao(): TaskDao
+    abstract fun tagDao(): TagDao
 
     companion object {
+        /** v8: tags coloridas nos links salvos. */
+        private val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `tags` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`name` TEXT NOT NULL, `color` INTEGER NOT NULL)"
+                )
+                db.execSQL("ALTER TABLE task_occurrences ADD COLUMN tagId INTEGER")
+            }
+        }
+
+        /** v7: links compartilhados como tarefas pontuais. */
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE task_occurrences ADD COLUMN url TEXT")
+                db.execSQL("ALTER TABLE task_occurrences ADD COLUMN estimateMinutes INTEGER")
+            }
+        }
+
         /** v6: afazeres cotidianos e pontuais. */
         private val MIGRATION_5_6 = object : Migration(5, 6) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -72,7 +92,7 @@ abstract class AppDatabase : RoomDatabase() {
                         )
                     }
                 })
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                 .build()
     }
 }

@@ -4,6 +4,12 @@
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
+    <!-- Tela de compartilhamento: só o diálogo, por cima do app de origem -->
+    <style name="Theme.FocusGuard.Translucent" parent="android:Theme.Translucent.NoTitleBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
     <!-- Tema usado ao inflar o overlay a partir do serviço -->
     <style name="Theme.FocusGuard.Overlay" parent="android:Theme.Material.NoActionBar" />
 </resources>

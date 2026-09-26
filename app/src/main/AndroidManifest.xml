@@ -10,6 +10,8 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Buscar título e duração dos links compartilhados com o app -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:name=".FocusGuardApp"
@@ -27,6 +29,21 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Aparece no "Compartilhar" de outros apps: links e textos viram tarefas pontuais -->
+        <activity
+            android:name=".ui.ShareActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:label="Salvar no FocusGuard"
+            android:taskAffinity=""
+            android:theme="@style/Theme.FocusGuard.Translucent">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
 
