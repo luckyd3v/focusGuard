@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -50,6 +51,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -63,6 +65,9 @@ import com.focusguard.data.UsageWindow
 import com.focusguard.util.TimeFormat
 
 private const val MAX_TASK_TITLE = 60
+
+/** Atalhos de estimativa para afazeres (mais curtos que os das janelas sob demanda). */
+private val taskEstimatePresets = listOf(5, 10, 15, 30, 60)
 
 /** Afazeres cotidianos (todo dia, opcionalmente ligados a uma janela) e pontuais (modelos reutilizáveis). */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -115,8 +120,8 @@ fun TasksScreen(vm: MainViewModel) {
             initial = null,
             windows = windows,
             onDismiss = { creating = false },
-            onSave = { title, windowId, addNow ->
-                vm.createTask(title, kind, windowId, addNow)
+            onSave = { title, windowId, addNow, estimate ->
+                vm.createTask(title, kind, windowId, addNow, estimate)
                 creating = false
             },
         )
@@ -127,8 +132,8 @@ fun TasksScreen(vm: MainViewModel) {
             initial = task,
             windows = windows,
             onDismiss = { editing = null },
-            onSave = { title, windowId, _ ->
-                vm.updateTask(task.copy(title = title, windowId = windowId))
+            onSave = { title, windowId, _, estimate ->
+                vm.updateTask(task.copy(title = title, windowId = windowId, estimateMinutes = estimate))
                 editing = null
             },
         )
@@ -168,8 +173,10 @@ private fun DailyTab(
             item { EmptyText("Nenhum afazer cotidiano. Ex.: \"Beber água\", \"Revisar a agenda\".") }
         } else {
             item {
+                val remaining = tasks.filter { byTask[it.id]?.done != true }.sumOf { it.estimateMinutes ?: 0 }
                 Text(
-                    "Hoje: $done de ${tasks.size} concluídos",
+                    "Hoje: $done de ${tasks.size} concluídos" +
+                        if (remaining > 0) " · faltam cerca de ${TimeFormat.duration(remaining * 60_000L)}" else "",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -181,7 +188,10 @@ private fun DailyTab(
                         val occurrence = byTask[task.id]
                         TaskRow(
                             title = task.title,
-                            subtitle = windows.firstOrNull { it.id == task.windowId }?.name ?: "Sem janela associada",
+                            subtitle = listOfNotNull(
+                                task.estimateMinutes?.let { TimeFormat.duration(it * 60_000L) },
+                                windows.firstOrNull { it.id == task.windowId }?.name ?: "Sem janela associada",
+                            ).joinToString(" · "),
                             done = occurrence?.done == true,
                             onCheck = occurrence?.let { o -> { vm.setDone(o, it) } },
                         ) {
@@ -244,13 +254,21 @@ private fun OneOffTab(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
                         ) {
-                            Text(
-                                task.title,
-                                style = MaterialTheme.typography.bodyLarge,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f),
-                            )
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    task.title,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                task.estimateMinutes?.let {
+                                    Text(
+                                        TimeFormat.duration(it * 60_000L),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
                             TextButton(onClick = { vm.addOneOff(task) }) { Text("Adicionar") }
                             IconButton(onClick = { onEdit(task) }) { Icon(Icons.Filled.Edit, contentDescription = "Editar") }
                             IconButton(onClick = { onDelete(task) }) { Icon(Icons.Filled.Delete, contentDescription = "Excluir") }
@@ -341,9 +359,13 @@ private fun TaskEditorDialog(
     initial: Task?,
     windows: List<UsageWindow>,
     onDismiss: () -> Unit,
-    onSave: (title: String, windowId: Long?, addNow: Boolean) -> Unit,
+    onSave: (title: String, windowId: Long?, addNow: Boolean, estimateMinutes: Int?) -> Unit,
 ) {
     var title by remember { mutableStateOf(initial?.title.orEmpty()) }
+    var estimateText by remember { mutableStateOf(initial?.estimateMinutes?.toString().orEmpty()) }
+    // Opcional: em branco = sem estimativa.
+    val estimate = estimateText.toIntOrNull()
+    val estimateValid = estimateText.isEmpty() || (estimate != null && estimate in 1..1440)
     var windowId by remember { mutableStateOf(initial?.windowId) }
     var addNow by remember { mutableStateOf(true) }
     val daily = kind == TaskKind.DAILY
@@ -371,6 +393,28 @@ private fun TaskEditorDialog(
                     supportingText = { Text("${title.charCount()}/$MAX_TASK_TITLE") },
                     modifier = Modifier.fillMaxWidth(),
                 )
+                Column {
+                    Text("Tempo estimado (opcional)", style = MaterialTheme.typography.labelLarge)
+                    Spacer(Modifier.height(6.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        taskEstimatePresets.forEach { preset ->
+                            FilterChip(
+                                selected = estimate == preset,
+                                onClick = { estimateText = if (estimate == preset) "" else preset.toString() },
+                                label = { Text(TimeFormat.duration(preset * 60_000L)) },
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = estimateText,
+                        onValueChange = { v -> estimateText = v.filter(Char::isDigit).take(4) },
+                        label = { Text("Minutos") },
+                        singleLine = true,
+                        isError = !estimateValid,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
                 if (daily) {
                     Column {
                         Text("Janela associada", style = MaterialTheme.typography.labelLarge)
@@ -397,8 +441,8 @@ private fun TaskEditorDialog(
         },
         confirmButton = {
             TextButton(
-                enabled = title.isNotBlank(),
-                onClick = { onSave(title.trim(), windowId, addNow) },
+                enabled = title.isNotBlank() && estimateValid,
+                onClick = { onSave(title.trim(), windowId, addNow, estimate) },
             ) { Text("Salvar") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },

@@ -53,7 +53,7 @@ class FocusRepository(
     /** Edita o afazer e a ocorrência de hoje ainda em aberto (a história concluída fica como estava). */
     suspend fun updateTask(task: Task, today: LocalDate) {
         taskDao.update(task)
-        taskDao.updateOpenOccurrence(task.id, today.toEpochDay(), task.title, task.windowId)
+        taskDao.updateOpenOccurrence(task.id, today.toEpochDay(), task.title, task.windowId, task.estimateMinutes)
     }
 
     /** Exclui o afazer; ocorrências já concluídas continuam no histórico. */
@@ -64,7 +64,15 @@ class FocusRepository(
 
     /** "Adicionar" de um afazer pontual: cria uma ocorrência nova para concluir. */
     suspend fun addOneOff(task: Task, today: LocalDate) {
-        taskDao.insertOccurrence(TaskOccurrence(taskId = task.id, title = task.title, kind = TaskKind.ONE_OFF, day = today.toEpochDay()))
+        taskDao.insertOccurrence(
+            TaskOccurrence(
+                taskId = task.id,
+                title = task.title,
+                kind = TaskKind.ONE_OFF,
+                day = today.toEpochDay(),
+                estimateMinutes = task.estimateMinutes,
+            )
+        )
     }
 
     /** Link compartilhado com o app: vira uma tarefa pontual em "Para fazer". */
@@ -80,6 +88,12 @@ class FocusRepository(
                 tagId = tagId,
             )
         )
+    }
+
+    /** Pendências para sugerir no tempo livre (garante antes os cotidianos de hoje). */
+    suspend fun pendingForFreeTime(today: LocalDate): List<TaskOccurrence> {
+        taskDao.ensureDailyOccurrences(today.toEpochDay())
+        return taskDao.pendingForFreeTime(today.toEpochDay())
     }
 
     fun observeLinks(doneSince: Long): Flow<List<TaskOccurrence>> = taskDao.observeLinks(doneSince)

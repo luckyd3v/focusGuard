@@ -11,9 +11,13 @@ import android.view.ContextThemeWrapper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
+import android.graphics.Color
 import android.widget.Button
+import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.TextView
 import com.focusguard.R
+import com.focusguard.data.FreeTimeSuggestion
 import com.focusguard.util.TimeFormat
 
 /**
@@ -31,6 +35,8 @@ class OverlayController(context: Context) {
         val snoozeMinutes: Int,
         val onIgnore: () -> Unit,
         val onSnooze: () -> Unit,
+        /** Usuário informou quanto tempo livre tem; quem chamou responde com [showSuggestions]. */
+        val onFreeTime: (minutes: Int) -> Unit,
     )
 
     private val themedContext = ContextThemeWrapper(context, R.style.Theme_FocusGuard_Overlay)
@@ -61,13 +67,14 @@ class OverlayController(context: Context) {
         snoozeMinutes: Int,
         onIgnore: () -> Unit,
         onSnooze: () -> Unit,
+        onFreeTime: (minutes: Int) -> Unit,
     ): Boolean {
         if (!Settings.canDrawOverlays(themedContext)) return false
         if (root != null) {
             update(elapsedMs)
             return true
         }
-        val c = Content(windowName, limitMinutes, snoozeMinutes, onIgnore, onSnooze)
+        val c = Content(windowName, limitMinutes, snoozeMinutes, onIgnore, onSnooze, onFreeTime)
         if (!attach(c, elapsedMs)) return false
         content = c
         // Pausa mídias em reprodução (vídeo, música, podcast) enquanto o alerta está na tela.
@@ -86,11 +93,102 @@ class OverlayController(context: Context) {
         content = null
     }
 
-    /** Tela girou: recria a view para usar o layout de retrato ou de paisagem. */
+    /** Tela girou: recria a view para usar o layout de retrato ou de paisagem (volta ao alerta). */
     fun onConfigurationChanged() {
         val c = content ?: return
         detach()
         if (!attach(c, lastElapsedMs)) hide()
+    }
+
+    // ------------------------------------------------------------ tempo livre
+
+    /** Troca o alerta pela pergunta "quanto tempo livre você tem?". */
+    private fun showFreeTimePicker(c: Content) {
+        val view = LayoutInflater.from(themedContext).inflate(R.layout.overlay_free_time, null)
+        val pick = { minutes: Int -> c.onFreeTime(minutes) }
+        mapOf(R.id.free_5 to 5, R.id.free_10 to 10, R.id.free_15 to 15, R.id.free_30 to 30, R.id.free_45 to 45, R.id.free_60 to 60)
+            .forEach { (id, minutes) -> view.findViewById<Button>(id).setOnClickListener { pick(minutes) } }
+        val custom = view.findViewById<EditText>(R.id.free_custom)
+        view.findViewById<Button>(R.id.free_go).setOnClickListener {
+            val minutes = custom.text.toString().toIntOrNull()
+            if (minutes != null && minutes in 1..600) pick(minutes) else custom.error = "De 1 a 600 minutos"
+        }
+        view.findViewById<Button>(R.id.free_back).setOnClickListener { backToAlert(c) }
+        swapTo(view)
+    }
+
+    /**
+     * Mostra as sugestões para [minutes] de tempo livre. [onStart] fecha o overlay concedendo o
+     * tempo; tocar num link chama [onOpenLink].
+     */
+    fun showSuggestions(
+        minutes: Int,
+        suggestions: List<FreeTimeSuggestion>,
+        onStart: () -> Unit,
+        onOpenLink: (String) -> Unit,
+    ) {
+        val c = content ?: return
+        val view = LayoutInflater.from(themedContext).inflate(R.layout.overlay_free_time, null)
+        view.findViewById<View>(R.id.free_picker).visibility = View.GONE
+        view.findViewById<View>(R.id.free_results).visibility = View.VISIBLE
+        val duration = TimeFormat.duration(minutes * 60_000L)
+        val used = suggestions.sumOf { it.task.estimateMinutes ?: 0 }
+        view.findViewById<TextView>(R.id.free_summary).text = if (suggestions.isEmpty()) {
+            "Nenhuma tarefa com tempo estimado cabe em $duration. Adicione estimativas aos seus afazeres para receber sugestões."
+        } else {
+            "Para os seus $duration livres (${TimeFormat.duration(used * 60_000L)} planejados):"
+        }
+        val list = view.findViewById<LinearLayout>(R.id.free_list)
+        suggestions.forEach { list.addView(suggestionView(it, onOpenLink)) }
+        view.findViewById<Button>(R.id.free_start).apply {
+            text = themedContext.getString(R.string.free_start, duration)
+            setOnClickListener { onStart() }
+        }
+        view.findViewById<Button>(R.id.free_back).setOnClickListener { showFreeTimePicker(c) }
+        swapTo(view)
+    }
+
+    private fun suggestionView(s: FreeTimeSuggestion, onOpenLink: (String) -> Unit): View {
+        val density = themedContext.resources.displayMetrics.density
+        val item = LinearLayout(themedContext).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = (10 * density).toInt()
+            setPadding(0, pad, 0, pad)
+        }
+        val url = s.task.url
+        item.addView(TextView(themedContext).apply {
+            text = if (url != null) "${s.task.title}  ↗" else s.task.title
+            setTextColor(Color.WHITE)
+            textSize = 16f
+        })
+        item.addView(TextView(themedContext).apply {
+            text = "${s.category.label} · ${TimeFormat.duration((s.task.estimateMinutes ?: 0) * 60_000L)}"
+            setTextColor(themedContext.getColor(R.color.overlay_text_secondary))
+            textSize = 13f
+        })
+        if (url != null) {
+            item.isClickable = true
+            item.setOnClickListener { onOpenLink(url) }
+        }
+        return item
+    }
+
+    private fun backToAlert(c: Content) {
+        detach()
+        if (!attach(c, lastElapsedMs)) hide()
+    }
+
+    /** Coloca [view] na janela do overlay no lugar da atual (adiciona antes de remover, sem piscar). */
+    private fun swapTo(view: View) {
+        val old = root
+        try {
+            windowManager.addView(view, newParams())
+        } catch (e: Exception) {
+            return
+        }
+        old?.let { runCatching { windowManager.removeViewImmediate(it) } }
+        root = view
+        elapsedView = null
     }
 
     private fun attach(c: Content, elapsedMs: Long): Boolean {
@@ -102,7 +200,20 @@ class OverlayController(context: Context) {
             text = themedContext.getString(R.string.overlay_snooze, c.snoozeMinutes)
             setOnClickListener { c.onSnooze() }
         }
+        view.findViewById<Button>(R.id.overlay_free).setOnClickListener { showFreeTimePicker(c) }
 
+        return try {
+            windowManager.addView(view, newParams())
+            root = view
+            elapsedView = view.findViewById(R.id.overlay_elapsed)
+            update(elapsedMs)
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun newParams(): WindowManager.LayoutParams {
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -118,17 +229,10 @@ class OverlayController(context: Context) {
                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) setFitInsetsTypes(0)
+            // Deixa o teclado empurrar o conteúdo ao digitar o tempo livre.
+            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
         }
-
-        return try {
-            windowManager.addView(view, params)
-            root = view
-            elapsedView = view.findViewById(R.id.overlay_elapsed)
-            update(elapsedMs)
-            true
-        } catch (e: Exception) {
-            false
-        }
+        return params
     }
 
     private fun detach() {

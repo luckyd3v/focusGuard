@@ -9,6 +9,7 @@ import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.content.res.Configuration
 import android.media.AudioAttributes
+import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -20,11 +21,13 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.focusguard.app
+import com.focusguard.data.FreeTimePlanner
 import com.focusguard.data.UsageSession
 import com.focusguard.data.UsageWindow
 import com.focusguard.data.WindowMatcher
 import com.focusguard.data.limitMs
 import com.focusguard.util.TimeFormat
+import java.time.LocalDate
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -375,6 +378,32 @@ class FocusMonitorService : Service() {
         }
     }
 
+    /**
+     * "Estou com tempo livre": sugere o que fazer em [minutes] (cotidianos da janela atual,
+     * depois independentes/pontuais, depois links). Começar concede esse tempo antes do próximo alerta.
+     */
+    private fun showFreeTimeSuggestions(s: ActiveSession, minutes: Int) {
+        scope.launch {
+            val pending = app.repository.pendingForFreeTime(LocalDate.now())
+            val suggestions = FreeTimePlanner.suggest(pending, s.window?.id, minutes)
+            val grant = {
+                overlay.hide()
+                s.nextAlertAt = System.currentTimeMillis() + minutes * 60_000L
+            }
+            overlay.showSuggestions(
+                minutes = minutes,
+                suggestions = suggestions,
+                onStart = grant,
+                onOpenLink = { url ->
+                    grant()
+                    runCatching {
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    }
+                },
+            )
+        }
+    }
+
     private fun showLimitAlert(s: ActiveSession, window: UsageWindow, now: Long) {
         val shown = overlay.show(
             windowName = window.name,
@@ -390,6 +419,7 @@ class FocusMonitorService : Service() {
                 overlay.hide()
                 s.nextAlertAt = System.currentTimeMillis() + FocusConfig.SNOOZE_MINUTES * 60_000L
             },
+            onFreeTime = { minutes -> showFreeTimeSuggestions(s, minutes) },
         )
         if (!shown) {
             // Sem permissão de overlay: usa notificação de alta prioridade como alternativa.

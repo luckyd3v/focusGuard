@@ -24,6 +24,8 @@ data class Task(
     val kind: Int,
     val windowId: Long? = null,
     val createdAt: Long = System.currentTimeMillis(),
+    /** Tempo estimado para fazer, em minutos (opcional); copiado para cada ocorrência. */
+    val estimateMinutes: Int? = null,
 )
 
 object TaskKind {
@@ -105,14 +107,21 @@ interface TaskDao {
     )
     fun observeHistory(day: Long, from: Long, to: Long): Flow<List<TaskOccurrence>>
 
+    /** Tudo o que está pendente para o tempo livre: cotidianos de hoje e pontuais/links em aberto. */
+    @Query("SELECT * FROM task_occurrences WHERE completedAt IS NULL AND ((kind = 0 AND day = :day) OR kind = 1)")
+    suspend fun pendingForFreeTime(day: Long): List<TaskOccurrence>
+
     @Query("UPDATE task_occurrences SET completedAt = :completedAt WHERE id = :id")
     suspend fun setCompleted(id: Long, completedAt: Long?)
 
     @Query("DELETE FROM task_occurrences WHERE id = :id")
     suspend fun deleteOccurrence(id: Long)
 
-    @Query("UPDATE task_occurrences SET title = :title, windowId = :windowId WHERE taskId = :taskId AND day = :day AND completedAt IS NULL")
-    suspend fun updateOpenOccurrence(taskId: Long, day: Long, title: String, windowId: Long?)
+    @Query(
+        "UPDATE task_occurrences SET title = :title, windowId = :windowId, estimateMinutes = :estimateMinutes " +
+            "WHERE taskId = :taskId AND day = :day AND completedAt IS NULL"
+    )
+    suspend fun updateOpenOccurrence(taskId: Long, day: Long, title: String, windowId: Long?, estimateMinutes: Int?)
 
     @Query("DELETE FROM task_occurrences WHERE taskId = :taskId AND day = :day AND completedAt IS NULL")
     suspend fun deleteOpenOccurrence(taskId: Long, day: Long)
@@ -132,7 +141,14 @@ interface TaskDao {
         val existing = dailyTaskIdsWithOccurrence(day).toSet()
         dailyTasks().filter { it.id !in existing }.forEach { task ->
             insertOccurrence(
-                TaskOccurrence(taskId = task.id, title = task.title, kind = TaskKind.DAILY, windowId = task.windowId, day = day)
+                TaskOccurrence(
+                    taskId = task.id,
+                    title = task.title,
+                    kind = TaskKind.DAILY,
+                    windowId = task.windowId,
+                    day = day,
+                    estimateMinutes = task.estimateMinutes,
+                )
             )
         }
     }

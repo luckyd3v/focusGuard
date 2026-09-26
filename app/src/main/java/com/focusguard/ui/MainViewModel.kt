@@ -194,8 +194,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         .flatMapLatest { date -> repository.observeTaskHistory(date, startOfDay(date), startOfDay(date.plusDays(1))) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    fun createTask(title: String, kind: Int, windowId: Long?, addNow: Boolean) = viewModelScope.launch {
-        val task = Task(title = title, kind = kind, windowId = windowId.takeIf { kind == TaskKind.DAILY })
+    fun createTask(title: String, kind: Int, windowId: Long?, addNow: Boolean, estimateMinutes: Int?) = viewModelScope.launch {
+        val task = Task(
+            title = title,
+            kind = kind,
+            windowId = windowId.takeIf { kind == TaskKind.DAILY },
+            estimateMinutes = estimateMinutes,
+        )
         repository.createTask(task, today.value, addNow = kind == TaskKind.ONE_OFF && addNow)
     }
 

@@ -81,6 +81,29 @@
                     android:textColor="#1B1B1B"
                     android:textSize="16sp" />
 
+                <!-- Pergunta o tempo livre e sugere tarefas que cabem nele -->
+
+                <Button
+
+                    android:id="@+id/overlay_free"
+
+                    android:layout_width="match_parent"
+
+                    android:layout_height="52dp"
+
+                    android:layout_marginTop="8dp"
+
+                    android:backgroundTint="@color/overlay_button_secondary"
+
+                    android:text="@string/overlay_free"
+
+                    android:textAllCaps="false"
+
+                    android:textColor="@android:color/white"
+
+                    android:textSize="15sp" />
+
+
                 <Button
                     android:id="@+id/overlay_ignore"
                     style="?android:attr/borderlessButtonStyle"

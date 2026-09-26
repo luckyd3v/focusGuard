@@ -5,4 +5,5 @@
     <color name="overlay_scrim">#EB0B1F1D</color>
     <color name="overlay_card">#16302D</color>
     <color name="overlay_text_secondary">#C9D8D5</color>
+    <color name="overlay_button_secondary">#2A4A45</color>
 </resources>
